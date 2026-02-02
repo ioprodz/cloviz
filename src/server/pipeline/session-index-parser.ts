@@ -37,6 +37,7 @@ export function parseSessionIndex(
     `INSERT INTO sessions (id, project_id, jsonl_path, summary, first_prompt, message_count, created_at, modified_at, git_branch, is_sidechain, slug)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
+       project_id = excluded.project_id,
        summary = excluded.summary,
        first_prompt = excluded.first_prompt,
        message_count = excluded.message_count,
