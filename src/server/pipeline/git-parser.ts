@@ -19,7 +19,7 @@ interface SessionWindow {
   id: string;
   createdAt: string;
   modifiedAt: string;
-  hasBashGitCommit: boolean;
+  hasWrites: boolean;
 }
 
 // Git format escapes (used in --format argument)
@@ -191,43 +191,37 @@ async function parseGitLog(
 }
 
 /**
- * Load session time windows and whether they contain Bash git commit tool_uses.
+ * Load session time windows and whether they contain file writes.
  */
 function loadSessionWindows(db: Database, projectId: number): SessionWindow[] {
   const sessions = db
     .prepare(
-      `SELECT s.id, s.created_at, s.modified_at
+      `SELECT s.id, s.created_at, s.modified_at,
+              COALESCE(writes.cnt, 0) > 0 as has_writes
        FROM sessions s
+       LEFT JOIN (
+         SELECT session_id, COUNT(*) as cnt
+         FROM tool_uses WHERE tool_name IN ('Write', 'Edit', 'MultiEdit')
+         GROUP BY session_id
+       ) writes ON writes.session_id = s.id
        WHERE s.project_id = ? AND s.created_at IS NOT NULL AND s.modified_at IS NOT NULL`
     )
-    .all(projectId) as { id: string; created_at: string; modified_at: string }[];
-
-  // Find sessions that have Bash tool_uses containing 'git commit'
-  const bashSessions = new Set<string>();
-  const bashRows = db
-    .prepare(
-      `SELECT DISTINCT t.session_id
-       FROM tool_uses t
-       JOIN sessions s ON t.session_id = s.id
-       WHERE s.project_id = ? AND t.tool_name = 'Bash'
-       AND t.input_json LIKE '%git commit%'`
-    )
-    .all(projectId) as { session_id: string }[];
-
-  for (const row of bashRows) {
-    bashSessions.add(row.session_id);
-  }
+    .all(projectId) as { id: string; created_at: string; modified_at: string; has_writes: number }[];
 
   return sessions.map((s) => ({
     id: s.id,
     createdAt: s.created_at,
     modifiedAt: s.modified_at,
-    hasBashGitCommit: bashSessions.has(s.id),
+    hasWrites: !!s.has_writes,
   }));
 }
 
 /**
- * Match commits to sessions by time window overlap.
+ * Match commits to sessions.
+ * A session matches a commit if:
+ *   1. The session has file writes
+ *   2. The commit timestamp is after the session's created_at
+ *   3. The session isn't already linked to a commit
  */
 function matchCommitsToSessions(
   db: Database,
@@ -236,6 +230,17 @@ function matchCommitsToSessions(
 ) {
   const windows = loadSessionWindows(db, projectId);
   if (windows.length === 0 || commits.length === 0) return;
+
+  // Find sessions already linked to a commit
+  const existingLinks = db
+    .prepare(
+      `SELECT DISTINCT sc.session_id
+       FROM session_commits sc
+       JOIN sessions s ON sc.session_id = s.id
+       WHERE s.project_id = ?`
+    )
+    .all(projectId) as { session_id: string }[];
+  const linkedSessions = new Set(existingLinks.map((r) => r.session_id));
 
   const insertLink = db.prepare(
     `INSERT OR IGNORE INTO session_commits (session_id, commit_id, match_type)
@@ -246,18 +251,22 @@ function matchCommitsToSessions(
     "SELECT id FROM commits WHERE project_id = ? AND hash = ?"
   );
 
+  // Sort commits oldest-first so each session matches its earliest commit
+  const sorted = [...commits].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+
   const tx = db.transaction(() => {
-    for (const commit of commits) {
+    for (const commit of sorted) {
       const commitRow = getCommitId.get(projectId, commit.hash) as { id: number } | null;
       if (!commitRow) continue;
 
-      const commitTime = commit.timestamp;
-
       for (const session of windows) {
-        // Check if commit timestamp falls within the session window
-        if (commitTime >= session.createdAt && commitTime <= session.modifiedAt) {
-          const matchType = session.hasBashGitCommit ? "direct" : "inferred";
-          insertLink.run(session.id, commitRow.id, matchType);
+        if (!session.hasWrites) continue;
+        if (linkedSessions.has(session.id)) continue;
+        if (commit.timestamp >= session.createdAt) {
+          insertLink.run(session.id, commitRow.id, "inferred");
+          linkedSessions.add(session.id);
         }
       }
     }

@@ -5,7 +5,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import SessionCardGrid, {
   type EnrichedSession,
 } from "../components/SessionCard";
-import KanbanBoard from "../components/KanbanBoard";
+import KanbanBoard, { type KanbanCommit } from "../components/KanbanBoard";
 import GanttChart from "../components/GanttChart";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import ProjectLogo from "../components/ProjectLogo";
@@ -38,6 +38,11 @@ interface EnrichedSessionsResponse {
   total: number;
 }
 
+interface CommitsResponse {
+  commits: KanbanCommit[];
+  total: number;
+}
+
 const PAGE_SIZE = 50;
 
 export default function ProjectDetail() {
@@ -52,7 +57,11 @@ export default function ProjectDetail() {
       `/api/projects/${id}/sessions-enriched?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,
       [id, page]
     );
-  useWebSocket("session:updated", () => { refetch(); refetchSessions(); });
+  const { data: commitsData, refetch: refetchCommits } = useApi<CommitsResponse>(
+    `/api/commits/project/${id}?limit=50`,
+    [id]
+  );
+  useWebSocket("session:updated", () => { refetch(); refetchSessions(); refetchCommits(); });
   const [sessionView, setSessionView] = useState<SessionView>("board");
 
   if (loading) {
@@ -167,7 +176,7 @@ export default function ProjectDetail() {
         ) : sessionView === "cards" ? (
           <SessionCardGrid sessions={enrichedSessions} />
         ) : sessionView === "board" ? (
-          <KanbanBoard sessions={enrichedSessions} />
+          <KanbanBoard sessions={enrichedSessions} commits={commitsData?.commits} />
         ) : (
           <GanttChart projectId={id!} />
         )}

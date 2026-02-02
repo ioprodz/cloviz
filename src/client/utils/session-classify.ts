@@ -41,20 +41,21 @@ export const KANBAN_COLUMNS: KanbanColumnDef[] = [
   },
 ];
 
-const ACTIVE_THRESHOLD_MS = 30 * 60 * 1000;
+const DONE_THRESHOLD_MS = 30 * 60 * 1000;
+const VALIDATE_THRESHOLD_MS = 5 * 60 * 1000;
 
 export function classifySession(session: EnrichedSession): KanbanCategory {
   const now = Date.now();
   const modifiedMs = session.modified_at
     ? new Date(session.modified_at).getTime()
     : 0;
-  const isRecentlyActive = now - modifiedMs <= ACTIVE_THRESHOLD_MS;
-  const hasEdits = session.files_written_count > 0;
+  const idleMs = now - modifiedMs;
+  const hasWrites = session.files_written_count > 0;
 
-  if (!isRecentlyActive) return "done";
-  if (hasEdits) return "validate";
-  if (session.has_plan && !hasEdits) return "plan";
-  return "implementation";
+  if (idleMs > DONE_THRESHOLD_MS) return "done";
+  if (hasWrites && idleMs > VALIDATE_THRESHOLD_MS) return "validate";
+  if (hasWrites) return "implementation";
+  return "plan";
 }
 
 export function classifySessions(
