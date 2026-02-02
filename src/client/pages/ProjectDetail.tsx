@@ -5,9 +5,17 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import SessionCardGrid, {
   type EnrichedSession,
 } from "../components/SessionCard";
+import KanbanBoard from "../components/KanbanBoard";
+import GanttChart from "../components/GanttChart";
 import LoadingSkeleton from "../components/LoadingSkeleton";
-import MarkdownView from "../components/MarkdownView";
 import { formatCost } from "../utils/format";
+
+const SESSION_VIEWS = [
+  { key: "cards", label: "Cards" },
+  { key: "board", label: "Board" },
+  { key: "gantt", label: "Gantt" },
+] as const;
+type SessionView = (typeof SESSION_VIEWS)[number]["key"];
 
 const API_BASE =
   typeof window !== "undefined"
@@ -65,65 +73,26 @@ interface ProjectAnalytics {
 interface EnrichedSessionsResponse {
   sessions: EnrichedSession[];
   planSessionMap: Record<string, string[]>;
+  total: number;
 }
 
-interface ProjectPlan {
-  id: number;
-  filename: string;
-  content: string;
-  mtime: number;
-  session_ids: string[];
-}
-
-interface ProjectPlansResponse {
-  plans: ProjectPlan[];
-}
-
-interface ProjectTodo {
-  id: number;
-  source_file: string;
-  session_id: string;
-  agent_id: string;
-  content: string;
-  status: string;
-  active_form: string;
-  session_summary?: string;
-  session_slug?: string;
-}
-
-interface ProjectTodosResponse {
-  todos: ProjectTodo[];
-  statusCounts: { status: string; count: number }[];
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  completed: "text-green-400 bg-green-900/20",
-  in_progress: "text-yellow-400 bg-yellow-900/20",
-  pending: "text-gray-400 bg-gray-800",
-};
+const PAGE_SIZE = 50;
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
+  const [page, setPage] = useState(0);
   const { data, loading, refetch } = useApi<ProjectAnalytics>(
     `/api/projects/${id}/analytics`,
     [id]
   );
   const { data: enrichedData, loading: enrichedLoading, refetch: refetchSessions } =
     useApi<EnrichedSessionsResponse>(
-      `/api/projects/${id}/sessions-enriched`,
-      [id]
+      `/api/projects/${id}/sessions-enriched?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,
+      [id, page]
     );
-  const { data: plansData } = useApi<ProjectPlansResponse>(
-    `/api/projects/${id}/plans`,
-    [id]
-  );
-  const { data: todosData } = useApi<ProjectTodosResponse>(
-    `/api/projects/${id}/todos`,
-    [id]
-  );
   useWebSocket("session:updated", () => { refetch(); refetchSessions(); });
-  const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
   const [logoImgFailed, setLogoImgFailed] = useState(false);
+  const [sessionView, setSessionView] = useState<SessionView>("cards");
 
   if (loading) {
     return (
@@ -137,16 +106,11 @@ export default function ProjectDetail() {
 
   const { project, costs, sessionCount, messageCount } = data;
   const enrichedSessions = enrichedData?.sessions ?? [];
-  const planSessionMap = enrichedData?.planSessionMap ?? {};
-  const plans = plansData?.plans ?? [];
 
   const savingsPct =
     costs.costWithoutCache > 0
       ? ((costs.cacheSavings / costs.costWithoutCache) * 100).toFixed(0)
       : "0";
-
-  // Build a lookup for enriched sessions by id
-  const sessionById = new Map(enrichedSessions.map((s) => [s.id, s]));
 
   const logoEl = (() => {
     if (project.logo_path && !logoImgFailed) {
@@ -230,137 +194,68 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Sessions as cards */}
+      {/* Sessions */}
       <div className="bg-surface-light rounded-xl border border-border overflow-hidden">
-        <div className="px-5 py-3 border-b border-border">
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-400">
-            Sessions ({enrichedSessions.length})
+            Sessions ({enrichedData?.total ?? enrichedSessions.length})
           </h3>
-        </div>
-        {enrichedLoading ? (
-          <div className="p-4">
-            <LoadingSkeleton variant="card" count={6} />
-          </div>
-        ) : (
-          <SessionCardGrid sessions={enrichedSessions} />
-        )}
-      </div>
-
-      {/* Plans section with grouped session cards */}
-      {plans.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-sm font-medium text-gray-400 px-1">
-            Plans ({plans.length})
-          </h3>
-          {plans.map((plan) => {
-            const planSessions = (
-              planSessionMap[plan.filename] ?? plan.session_ids ?? []
-            )
-              .map((sid) => sessionById.get(sid))
-              .filter(Boolean) as EnrichedSession[];
-
-            return (
-              <div
-                key={plan.id}
-                className="bg-surface-light rounded-xl border border-border overflow-hidden"
+          <div className="flex gap-1 bg-surface rounded-lg p-0.5 border border-border">
+            {SESSION_VIEWS.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => {
+                  setSessionView(v.key);
+                  if (v.key !== "gantt") setPage(0);
+                }}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                  sessionView === v.key
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "text-gray-500 hover:text-gray-300 hover:bg-surface-lighter"
+                }`}
               >
-                <button
-                  onClick={() =>
-                    setExpandedPlan(
-                      expandedPlan === plan.id ? null : plan.id
-                    )
-                  }
-                  className="w-full text-left px-5 py-3 hover:bg-surface-lighter transition-colors flex items-center gap-3"
-                >
-                  <span className="text-[10px] w-3 text-center text-gray-500">
-                    {expandedPlan === plan.id ? "\u25BC" : "\u25B6"}
-                  </span>
-                  <span className="text-sm text-gray-200 flex-1 truncate">
-                    {plan.filename.replace(".md", "")}
-                  </span>
-                  <span className="text-[10px] text-gray-600">
-                    {new Date(plan.mtime).toLocaleDateString()}
-                  </span>
-                  {planSessions.length > 0 && (
-                    <span className="text-[10px] bg-surface-lighter text-gray-500 px-1.5 py-0.5 rounded">
-                      {planSessions.length} session
-                      {planSessions.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </button>
-                {expandedPlan === plan.id && (
-                  <>
-                    <div className="px-5 py-3 max-h-96 overflow-y-auto border-t border-border/50 bg-surface/50">
-                      <MarkdownView content={plan.content} />
-                    </div>
-                    {planSessions.length > 0 && (
-                      <div className="border-t border-border/50">
-                        <SessionCardGrid sessions={planSessions} />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Todos section */}
-      {(todosData?.todos ?? []).length > 0 && (
-        <div className="bg-surface-light rounded-xl border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border flex items-center gap-3">
-            <h3 className="text-sm font-medium text-gray-400">
-              Todos ({todosData!.todos.length})
-            </h3>
-            <div className="flex gap-1.5">
-              {todosData!.statusCounts.map((sc) => (
-                <span
-                  key={sc.status}
-                  className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    STATUS_COLORS[sc.status] ?? STATUS_COLORS.pending
-                  }`}
-                >
-                  {sc.status}: {sc.count}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="divide-y divide-border/50">
-            {todosData!.todos.map((todo) => (
-              <div key={todo.id} className="px-5 py-3">
-                <div className="flex items-start gap-3">
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0 ${
-                      STATUS_COLORS[todo.status] ?? STATUS_COLORS.pending
-                    }`}
-                  >
-                    {todo.status}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-gray-200">
-                      {todo.content}
-                    </div>
-                    {todo.active_form && (
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {todo.active_form}
-                      </div>
-                    )}
-                    <div className="text-[10px] text-gray-600 mt-1">
-                      <Link
-                        to={`/sessions/${todo.session_id}`}
-                        className="hover:text-gray-400"
-                      >
-                        {todo.session_summary || todo.session_slug || todo.session_id.slice(0, 8)}
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                {v.label}
+              </button>
             ))}
           </div>
         </div>
-      )}
+        {enrichedLoading && sessionView !== "gantt" ? (
+          <div className="p-4">
+            <LoadingSkeleton variant="card" count={6} />
+          </div>
+        ) : sessionView === "cards" ? (
+          <SessionCardGrid sessions={enrichedSessions} />
+        ) : sessionView === "board" ? (
+          <KanbanBoard sessions={enrichedSessions} />
+        ) : (
+          <GanttChart projectId={id!} />
+        )}
+        {/* Pagination controls (hidden for Gantt which manages its own data) */}
+        {sessionView !== "gantt" && (enrichedData?.total ?? 0) > PAGE_SIZE && (
+          <div className="px-5 py-3 border-t border-border flex items-center justify-between text-sm">
+            <span className="text-gray-500">
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, enrichedData?.total ?? 0)} of {enrichedData?.total ?? 0}
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+                className="px-3 py-1 rounded bg-surface text-gray-400 disabled:opacity-30 hover:bg-surface-lighter"
+              >
+                Prev
+              </button>
+              <button
+                disabled={(page + 1) * PAGE_SIZE >= (enrichedData?.total ?? 0)}
+                onClick={() => setPage((p) => p + 1)}
+                className="px-3 py-1 rounded bg-surface text-gray-400 disabled:opacity-30 hover:bg-surface-lighter"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

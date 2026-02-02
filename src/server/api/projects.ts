@@ -436,6 +436,31 @@ app.get("/:id/sessions-enriched", (c) => {
     return c.json({ error: "Project not found" }, 404);
   }
 
+  // Pagination & time-filtering query params
+  const limit = Math.max(1, Math.min(500, parseInt(c.req.query("limit") || "50", 10) || 50));
+  const offset = Math.max(0, parseInt(c.req.query("offset") || "0", 10) || 0);
+  const since = c.req.query("since") || null;
+  const until = c.req.query("until") || null;
+
+  // Build dynamic WHERE clauses
+  const whereClauses = ["s.project_id = ?"];
+  const whereParams: unknown[] = [id];
+  if (since) {
+    whereClauses.push("s.modified_at >= ?");
+    whereParams.push(since);
+  }
+  if (until) {
+    whereClauses.push("s.created_at <= ?");
+    whereParams.push(until);
+  }
+  const whereSQL = whereClauses.join(" AND ");
+
+  // Total count for pagination
+  const totalRow = db
+    .prepare(`SELECT COUNT(*) as total FROM sessions s WHERE ${whereSQL}`)
+    .get(...whereParams) as { total: number };
+  const total = totalRow.total;
+
   // Base sessions with file counts, todo counts, and commit counts via subqueries
   const sessions = db
     .prepare(
@@ -476,47 +501,51 @@ app.get("/:id/sessions-enriched", (c) => {
          SELECT session_id, COUNT(*) as cnt
          FROM session_commits GROUP BY session_id
        ) commit_check ON commit_check.session_id = s.id
-       WHERE s.project_id = ?
-       ORDER BY s.modified_at DESC`
+       WHERE ${whereSQL}
+       ORDER BY s.modified_at DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(id) as any[];
+    .all(...whereParams, limit, offset) as any[];
 
-  // Compute costs per session (group by session + model, then aggregate)
-  const costRows = db
-    .prepare(
-      `SELECT m.session_id, m.model,
-              SUM(m.input_tokens) as input_tokens,
-              SUM(m.output_tokens) as output_tokens,
-              SUM(m.cache_creation_tokens) as cache_creation_tokens,
-              SUM(m.cache_read_tokens) as cache_read_tokens
-       FROM messages m
-       JOIN sessions s ON m.session_id = s.id
-       WHERE s.project_id = ? AND m.model IS NOT NULL AND m.model != ''
-       GROUP BY m.session_id, m.model`
-    )
-    .all(id) as {
-    session_id: string;
-    model: string;
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_tokens: number;
-    cache_read_tokens: number;
-  }[];
-
-  // Aggregate costs per session
+  // Compute costs only for the returned session IDs
+  const sessionIds = sessions.map((s: any) => s.id);
   const sessionCostMap = new Map<string, CostWithSavings[]>();
-  for (const row of costRows) {
-    const cost = calculateCost(
-      row.model,
-      row.input_tokens ?? 0,
-      row.output_tokens ?? 0,
-      row.cache_creation_tokens ?? 0,
-      row.cache_read_tokens ?? 0
-    );
-    if (!sessionCostMap.has(row.session_id)) {
-      sessionCostMap.set(row.session_id, []);
+
+  if (sessionIds.length > 0) {
+    const placeholders = sessionIds.map(() => "?").join(",");
+    const costRows = db
+      .prepare(
+        `SELECT m.session_id, m.model,
+                SUM(m.input_tokens) as input_tokens,
+                SUM(m.output_tokens) as output_tokens,
+                SUM(m.cache_creation_tokens) as cache_creation_tokens,
+                SUM(m.cache_read_tokens) as cache_read_tokens
+         FROM messages m
+         WHERE m.session_id IN (${placeholders}) AND m.model IS NOT NULL AND m.model != ''
+         GROUP BY m.session_id, m.model`
+      )
+      .all(...sessionIds) as {
+      session_id: string;
+      model: string;
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_tokens: number;
+      cache_read_tokens: number;
+    }[];
+
+    for (const row of costRows) {
+      const cost = calculateCost(
+        row.model,
+        row.input_tokens ?? 0,
+        row.output_tokens ?? 0,
+        row.cache_creation_tokens ?? 0,
+        row.cache_read_tokens ?? 0
+      );
+      if (!sessionCostMap.has(row.session_id)) {
+        sessionCostMap.set(row.session_id, []);
+      }
+      sessionCostMap.get(row.session_id)!.push(cost);
     }
-    sessionCostMap.get(row.session_id)!.push(cost);
   }
 
   // Also fetch plan-to-session mapping so frontend can group by plan
@@ -559,7 +588,7 @@ app.get("/:id/sessions-enriched", (c) => {
     };
   });
 
-  return c.json({ sessions: enriched, planSessionMap });
+  return c.json({ sessions: enriched, planSessionMap, total, limit, offset });
 });
 
 export default app;
