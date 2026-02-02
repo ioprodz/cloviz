@@ -1076,6 +1076,7 @@ function ActivityTab({ projectId }: { projectId: string }) {
   const { data, loading, refetch } = useApi<DashboardData>(url, [projectId]);
 
   useWebSocket("history:appended", refetch);
+  useWebSocket("session:updated", refetch);
 
   if (loading)
     return (

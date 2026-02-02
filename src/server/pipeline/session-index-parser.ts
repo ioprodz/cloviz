@@ -41,6 +41,7 @@ export function parseSessionIndex(
        summary = excluded.summary,
        first_prompt = excluded.first_prompt,
        message_count = excluded.message_count,
+       created_at = COALESCE(NULLIF(excluded.created_at, ''), sessions.created_at),
        modified_at = excluded.modified_at,
        git_branch = excluded.git_branch,
        is_sidechain = excluded.is_sidechain`

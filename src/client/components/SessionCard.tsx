@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
-import { formatCost } from "../utils/format";
+import { formatCost, formatDuration } from "../utils/format";
 
 export interface EnrichedSession {
   id: string;
@@ -66,6 +66,11 @@ export default function SessionCardGrid({ sessions }: SessionCardGridProps) {
               </span>
             )}
             <span>{s.message_count} msgs</span>
+            {s.created_at && s.modified_at && (
+              <span title="Session duration">
+                {formatDuration(s.created_at, s.modified_at)}
+              </span>
+            )}
             {s.modified_at && (
               <span>
                 {formatDistanceToNow(new Date(s.modified_at), {

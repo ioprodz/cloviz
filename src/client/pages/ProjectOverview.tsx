@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useApi } from "../hooks/useApi";
+import { useWebSocket } from "../hooks/useWebSocket";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { formatCost } from "../utils/format";
 import { formatDistanceToNow } from "date-fns";
@@ -99,10 +100,11 @@ interface ProjectsResponse {
 }
 
 export default function ProjectOverview() {
-  const { data, loading } = useApi<ProjectsResponse>("/api/projects");
-  const { data: costData } = useApi<Record<number, CostWithSavings>>(
+  const { data, loading, refetch } = useApi<ProjectsResponse>("/api/projects");
+  const { data: costData, refetch: refetchCosts } = useApi<Record<number, CostWithSavings>>(
     "/api/projects/costs"
   );
+  useWebSocket("session:updated", () => { refetch(); refetchCosts(); });
 
   if (loading) {
     return (

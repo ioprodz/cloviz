@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useState } from "react";
 import { useApi } from "../hooks/useApi";
+import { useWebSocket } from "../hooks/useWebSocket";
 import SessionCardGrid, {
   type EnrichedSession,
 } from "../components/SessionCard";
@@ -103,11 +104,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading } = useApi<ProjectAnalytics>(
+  const { data, loading, refetch } = useApi<ProjectAnalytics>(
     `/api/projects/${id}/analytics`,
     [id]
   );
-  const { data: enrichedData, loading: enrichedLoading } =
+  const { data: enrichedData, loading: enrichedLoading, refetch: refetchSessions } =
     useApi<EnrichedSessionsResponse>(
       `/api/projects/${id}/sessions-enriched`,
       [id]
@@ -120,6 +121,7 @@ export default function ProjectDetail() {
     `/api/projects/${id}/todos`,
     [id]
   );
+  useWebSocket("session:updated", () => { refetch(); refetchSessions(); });
   const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
   const [logoImgFailed, setLogoImgFailed] = useState(false);
 

@@ -14,6 +14,18 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
+export function formatDuration(startISO: string, endISO: string): string {
+  const ms = new Date(endISO).getTime() - new Date(startISO).getTime();
+  if (ms < 0) return "-";
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return "< 1 min";
+  const hrs = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  if (hrs === 0) return `${min} min`;
+  if (min === 0) return hrs === 1 ? "1 hr" : `${hrs} hrs`;
+  return `${hrs === 1 ? "1 hr" : `${hrs} hrs`} ${min} min`;
+}
+
 export function formatTrend(
   current: number,
   previous: number
