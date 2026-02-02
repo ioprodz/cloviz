@@ -1,0 +1,38 @@
+{
+  "name": "cloviz",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev:server": "bun --watch src/server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production bun src/server/index.ts",
+    "preview": "vite build && bun src/server/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.7.0",
+    "chokidar": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.0",
+    "recharts": "^2.15.0",
+    "react-markdown": "^9.0.0",
+    "remark-gfm": "^4.0.0",
+    "@tanstack/react-table": "^8.21.0",
+    "diff": "^7.0.0",
+    "date-fns": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/diff": "^7.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^6.1.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}
