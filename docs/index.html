@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloviz - Claude Session Dashboard & Analytics</title>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --bg-card: #111827;
+      --bg-card-hover: #1a2236;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-light: #818cf8;
+      --primary-glow: rgba(99, 102, 241, 0.15);
+      --accent: #22d3ee;
+      --accent-glow: rgba(34, 211, 238, 0.1);
+      --green: #34d399;
+      --orange: #fb923c;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    a {
+      color: var(--primary-light);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(11, 15, 26, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+    }
+
+    nav .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    nav .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    nav .logo span {
+      color: var(--primary-light);
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    nav .nav-links a {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    nav .nav-links a:hover {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    /* Hero */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.35rem 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      max-width: 800px;
+    }
+
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--primary-light), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 2.5rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-light);
+      text-decoration: none;
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover {
+      background: var(--bg-card);
+      border-color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    /* Sections */
+    section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 6rem 2rem;
+    }
+
+    .section-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--primary-light);
+      margin-bottom: 0.75rem;
+    }
+
+    .section-title {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+    }
+
+    .section-desc {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 3rem;
+    }
+
+    /* Feature Grid */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .feature-icon.purple { background: rgba(99, 102, 241, 0.15); }
+    .feature-icon.cyan { background: rgba(34, 211, 238, 0.15); }
+    .feature-icon.green { background: rgba(52, 211, 153, 0.15); }
+    .feature-icon.orange { background: rgba(251, 146, 60, 0.15); }
+
+    .feature-card h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Views Showcase */
+    .views-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .view-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+
+    .view-card:hover {
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .view-preview {
+      height: 180px;
+      background: var(--bg-card-hover);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .view-preview .mock {
+      font-size: 3rem;
+      opacity: 0.25;
+    }
+
+    .view-card-body {
+      padding: 1.5rem;
+    }
+
+    .view-card-body h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .view-card-body p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Analytics Tabs Display */
+    .analytics-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .tab-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .tab-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .analytics-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    .analytics-detail {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+
+    .analytics-detail h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .analytics-detail p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* How it Works */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 2rem;
+      counter-reset: step;
+    }
+
+    .step {
+      position: relative;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--primary-glow);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: var(--primary-light);
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .step h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .step p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Tech Stack */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .tech-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .tech-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tech-dot.blue { background: #60a5fa; }
+    .tech-dot.cyan { background: #22d3ee; }
+    .tech-dot.purple { background: #a78bfa; }
+    .tech-dot.yellow { background: #fbbf24; }
+    .tech-dot.green { background: #34d399; }
+    .tech-dot.pink { background: #f472b6; }
+
+    .tech-item .tech-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .tech-item .tech-role {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Install Section */
+    .install-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 700px;
+    }
+
+    .install-block code {
+      display: block;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.9rem;
+      color: var(--accent);
+      margin-top: 1rem;
+      overflow-x: auto;
+    }
+
+    .install-block code .comment {
+      color: var(--text-muted);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer .footer-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    footer a {
+      color: var(--text-muted);
+    }
+
+    footer a:hover {
+      color: var(--text);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      nav .nav-links {
+        display: none;
+      }
+
+      .hero {
+        padding: 5rem 1.5rem 3rem;
+      }
+
+      section {
+        padding: 4rem 1.5rem;
+      }
+
+      .feature-grid,
+      .views-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .steps {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Divider */
+    .divider {
+      max-width: 1200px;
+      margin: 0 auto;
+      border: none;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Kanban mock */
+    .kanban-mock {
+      display: flex;
+      gap: 8px;
+      padding: 16px;
+      width: 100%;
+    }
+
+    .kanban-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kanban-col-title {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 4px 4px;
+      opacity: 0.6;
+    }
+
+    .kanban-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 0.55rem;
+      color: var(--text-muted);
+      opacity: 0.5;
+    }
+
+    /* Gantt mock */
+    .gantt-mock {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .gantt-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .gantt-label {
+      font-size: 0.55rem;
+      color: var(--text-muted);
+      width: 50px;
+      text-align: right;
+      opacity: 0.5;
+    }
+
+    .gantt-bar {
+      height: 14px;
+      border-radius: 3px;
+      opacity: 0.4;
+    }
+
+    /* Chart mock */
+    .chart-mock {
+      padding: 16px;
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 100%;
+      width: 100%;
+    }
+
+    .chart-bar {
+      flex: 1;
+      border-radius: 3px 3px 0 0;
+      opacity: 0.4;
+    }
+
+    /* Chat mock */
+    .chat-mock {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .chat-bubble {
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.55rem;
+      max-width: 80%;
+      opacity: 0.4;
+    }
+
+    .chat-bubble.user {
+      background: var(--primary);
+      align-self: flex-end;
+      color: white;
+    }
+
+    .chat-bubble.assistant {
+      background: var(--border);
+      align-self: flex-start;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <div class="logo">clo<span>viz</span></div>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#views">Views</a></li>
+        <li><a href="#analytics">Analytics</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#stack">Stack</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Open Source
+    </div>
+    <h1>Your Claude sessions,<br><span class="gradient">visualized</span></h1>
+    <p>A local dashboard that indexes your Claude Code sessions, tracks costs, visualizes activity patterns, and helps you understand how you work with AI.</p>
+    <div class="hero-actions">
+      <a href="#how-it-works" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/nicobailon/cloviz" class="btn btn-outline">View on GitHub</a>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Core Features -->
+  <section id="features">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything you need to understand your Claude usage</h2>
+    <p class="section-desc">Cloviz automatically watches your Claude session files, indexes them into a local database, and serves a dashboard with deep analytics and session replay.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon purple">$</div>
+        <h3>Cost Tracking</h3>
+        <p>Monitor spend across all Claude models with daily trends, cache savings breakdowns, and per-model cost analysis. See exactly how much cache hits are saving you.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon cyan">&gt;_</div>
+        <h3>Session Replay</h3>
+        <p>Step through full conversation histories with file diffs, tool usage cards, thinking blocks, and todo lists. See exactly what happened in every session.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon green">&lt;/&gt;</div>
+        <h3>Git Integration</h3>
+        <p>Automatically links commits to sessions, tracks branches, and shows file insertions and deletions. See which sessions produced which code changes.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon orange">~</div>
+        <h3>Activity Patterns</h3>
+        <p>Hour-by-day heatmaps reveal when you're most active. Identify peak coding hours, track daily session counts, and understand your workflow rhythms.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon purple">Q</div>
+        <h3>Full-Text Search</h3>
+        <p>Search across all messages, sessions, and plan files. Find that conversation where you solved a specific problem, with context-highlighted results.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon cyan">#</div>
+        <h3>Multi-Project Support</h3>
+        <p>Tracks sessions across all your projects with per-project analytics. Project sidebar with auto-generated logos for quick navigation between codebases.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon green">T</div>
+        <h3>Tool Usage Analytics</h3>
+        <p>See which tools Claude uses most, with treemap and bar chart views. Track daily tool trends and find sessions with the highest tool call counts.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon orange">W</div>
+        <h3>Real-Time Updates</h3>
+        <p>WebSocket connection keeps the dashboard in sync as new sessions arrive. File watcher monitors your Claude directory and indexes changes automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Session Views -->
+  <section id="views">
+    <div class="section-label">Views</div>
+    <h2 class="section-title">Multiple ways to see your sessions</h2>
+    <p class="section-desc">Switch between visualization modes to get different perspectives on your coding sessions and project progress.</p>
+
+    <div class="views-grid">
+      <div class="view-card">
+        <div class="view-preview">
+          <div class="kanban-mock">
+            <div class="kanban-col">
+              <div class="kanban-col-title">Plan</div>
+              <div class="kanban-item">Refactor auth</div>
+              <div class="kanban-item">Add tests</div>
+            </div>
+            <div class="kanban-col">
+              <div class="kanban-col-title">Implement</div>
+              <div class="kanban-item">API endpoints</div>
+            </div>
+            <div class="kanban-col">
+              <div class="kanban-col-title">Validate</div>
+              <div class="kanban-item">Fix CI</div>
+            </div>
+            <div class="kanban-col">
+              <div class="kanban-col-title">Done</div>
+              <div class="kanban-item">Setup DB</div>
+              <div class="kanban-item">Init project</div>
+            </div>
+          </div>
+        </div>
+        <div class="view-card-body">
+          <h3>Kanban Board</h3>
+          <p>Sessions organized by phase: Plan, Implementation, Validate, and Done. Commit cards show linked code changes.</p>
+        </div>
+      </div>
+
+      <div class="view-card">
+        <div class="view-preview">
+          <div class="gantt-mock">
+            <div class="gantt-row">
+              <div class="gantt-label">Mon</div>
+              <div class="gantt-bar" style="width: 60%; background: var(--primary);"></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label">Tue</div>
+              <div class="gantt-bar" style="width: 35%; margin-left: 20%; background: var(--accent);"></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label">Wed</div>
+              <div class="gantt-bar" style="width: 80%; background: var(--primary);"></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label">Thu</div>
+              <div class="gantt-bar" style="width: 45%; margin-left: 10%; background: var(--green);"></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label">Fri</div>
+              <div class="gantt-bar" style="width: 55%; margin-left: 5%; background: var(--accent);"></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label">Sat</div>
+              <div class="gantt-bar" style="width: 25%; margin-left: 40%; background: var(--primary);"></div>
+            </div>
+          </div>
+        </div>
+        <div class="view-card-body">
+          <h3>Gantt Timeline</h3>
+          <p>Visualize session durations on a timeline with 1-day, 1-week, 1-month, and all-time presets. Compressed gaps for readability.</p>
+        </div>
+      </div>
+
+      <div class="view-card">
+        <div class="view-preview">
+          <div class="chat-mock">
+            <div class="chat-bubble user">Add error handling to the API endpoint</div>
+            <div class="chat-bubble assistant">I'll add try-catch blocks and proper HTTP status codes to the endpoint...</div>
+            <div class="chat-bubble user">Also update the tests</div>
+            <div class="chat-bubble assistant">I'll update the test suite to cover the new error cases...</div>
+          </div>
+        </div>
+        <div class="view-card-body">
+          <h3>Session Replay</h3>
+          <p>Full conversation replay with file diffs, tool usage, thinking blocks, and linked commits in a split-pane layout.</p>
+        </div>
+      </div>
+
+      <div class="view-card">
+        <div class="view-preview">
+          <div class="chart-mock">
+            <div class="chart-bar" style="height: 30%; background: var(--primary);"></div>
+            <div class="chart-bar" style="height: 65%; background: var(--primary);"></div>
+            <div class="chart-bar" style="height: 45%; background: var(--accent);"></div>
+            <div class="chart-bar" style="height: 80%; background: var(--primary);"></div>
+            <div class="chart-bar" style="height: 55%; background: var(--accent);"></div>
+            <div class="chart-bar" style="height: 35%; background: var(--green);"></div>
+            <div class="chart-bar" style="height: 70%; background: var(--primary);"></div>
+            <div class="chart-bar" style="height: 90%; background: var(--accent);"></div>
+            <div class="chart-bar" style="height: 40%; background: var(--green);"></div>
+            <div class="chart-bar" style="height: 60%; background: var(--primary);"></div>
+            <div class="chart-bar" style="height: 50%; background: var(--accent);"></div>
+            <div class="chart-bar" style="height: 75%; background: var(--primary);"></div>
+          </div>
+        </div>
+        <div class="view-card-body">
+          <h3>Analytics Charts</h3>
+          <p>Cost trends, token usage, tool frequency, and activity heatmaps with daily breakdowns and model comparisons.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Analytics Deep Dive -->
+  <section id="analytics">
+    <div class="section-label">Analytics</div>
+    <h2 class="section-title">Five tabs of deep insights</h2>
+    <p class="section-desc">The analytics dashboard gives you a comprehensive view of how you use Claude across all your projects.</p>
+
+    <div class="analytics-tabs">
+      <span class="tab-pill active">Costs</span>
+      <span class="tab-pill">Usage</span>
+      <span class="tab-pill">Tools</span>
+      <span class="tab-pill">Patterns</span>
+      <span class="tab-pill">Activity</span>
+    </div>
+
+    <div class="analytics-detail-grid">
+      <div class="analytics-detail">
+        <h4>Cost Trends</h4>
+        <p>Daily spend with 7-day and 30-day moving averages. Compare actual costs against what you would have spent without caching.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Cache Savings</h4>
+        <p>Track how much prompt caching saves you, with percentage breakdowns and trend lines showing savings over time.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Per-Model Breakdown</h4>
+        <p>See costs and token usage split by model: Opus, Sonnet, and Haiku. Understand which models drive your spend.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Token Metrics</h4>
+        <p>Input and output token counts, cache hit rates, and daily token distribution stacked by model.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Tool Frequency</h4>
+        <p>Most-used tools displayed as treemaps or bar charts. Daily tool trends and sessions ranked by tool call volume.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Activity Heatmap</h4>
+        <p>Hour-by-day grid showing when you code with Claude. Identify peak hours and see morning vs evening distribution.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Session History</h4>
+        <p>Recent sessions with links, daily summaries of sessions, messages, and tool calls. Track your productivity cadence.</p>
+      </div>
+      <div class="analytics-detail">
+        <h4>Project Analytics</h4>
+        <p>Filter all analytics per project. Understand which codebases consume the most tokens and generate the most sessions.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- How It Works -->
+  <section id="how-it-works">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">Up and running in three steps</h2>
+    <p class="section-desc">Cloviz runs entirely on your machine. No data leaves your computer.</p>
+
+    <div class="steps">
+      <div class="step">
+        <h3>Install and start</h3>
+        <p>Clone the repository and run the dev server. Cloviz starts watching your <code>~/.claude</code> directory immediately.</p>
+      </div>
+      <div class="step">
+        <h3>Automatic indexing</h3>
+        <p>Session files are parsed and indexed into a local SQLite database. Git commits are linked, costs are calculated, and patterns are detected.</p>
+      </div>
+      <div class="step">
+        <h3>Explore your data</h3>
+        <p>Open the dashboard to browse projects, replay sessions, search conversations, and analyze your Claude usage patterns.</p>
+      </div>
+    </div>
+
+    <div class="install-block" style="margin-top: 3rem;">
+      <h3>Quick Start</h3>
+      <code>
+        <span class="comment"># Clone the repository</span><br>
+        git clone https://github.com/nicobailon/cloviz.git<br>
+        cd cloviz<br><br>
+        <span class="comment"># Install dependencies</span><br>
+        bun install<br><br>
+        <span class="comment"># Start the dashboard</span><br>
+        bun run dev
+      </code>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Tech Stack -->
+  <section id="stack">
+    <div class="section-label">Built With</div>
+    <h2 class="section-title">Modern, fast, local-first</h2>
+    <p class="section-desc">A lightweight stack designed for speed and privacy. All data stays on your machine.</p>
+
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="tech-dot blue"></div>
+        <div>
+          <div class="tech-name">React 19</div>
+          <div class="tech-role">Frontend UI</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot cyan"></div>
+        <div>
+          <div class="tech-name">TypeScript</div>
+          <div class="tech-role">End-to-end type safety</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot purple"></div>
+        <div>
+          <div class="tech-name">Vite</div>
+          <div class="tech-role">Build tooling</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot yellow"></div>
+        <div>
+          <div class="tech-name">Bun</div>
+          <div class="tech-role">Runtime & package manager</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot green"></div>
+        <div>
+          <div class="tech-name">Hono</div>
+          <div class="tech-role">Backend framework</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot pink"></div>
+        <div>
+          <div class="tech-name">SQLite</div>
+          <div class="tech-role">Local database</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot cyan"></div>
+        <div>
+          <div class="tech-name">Tailwind CSS</div>
+          <div class="tech-role">Styling</div>
+        </div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-dot blue"></div>
+        <div>
+          <div class="tech-name">Recharts</div>
+          <div class="tech-role">Data visualization</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-inner">
+      <p>Cloviz &mdash; Open source Claude session analytics. Built with Bun, React, and SQLite.</p>
+      <p style="margin-top: 0.5rem;"><a href="https://github.com/nicobailon/cloviz">GitHub</a></p>
+    </div>
+  </footer>
+
+</body>
+</html>
