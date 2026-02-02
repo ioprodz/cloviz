@@ -221,6 +221,88 @@ app.get("/:id/files", (c) => {
   return c.json({ files });
 });
 
+// Tool usage timeline bucketed by message sequence
+app.get("/:id/tool-timeline", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  // Get message IDs in order to establish sequence positions
+  const messages = db
+    .prepare(`SELECT id FROM messages WHERE session_id = ? ORDER BY id ASC`)
+    .all(id) as { id: number }[];
+
+  if (messages.length === 0) {
+    return c.json({
+      buckets: [],
+      totals: { read: 0, write: 0, bash: 0, search: 0, other: 0 },
+    });
+  }
+
+  // Map message_id to sequence index
+  const msgSeq = new Map<number, number>();
+  messages.forEach((m, i) => msgSeq.set(m.id, i));
+
+  // Get all tool uses
+  const toolUses = db
+    .prepare(
+      `SELECT tool_name, message_id FROM tool_uses WHERE session_id = ? ORDER BY id ASC`
+    )
+    .all(id) as { tool_name: string; message_id: number }[];
+
+  const totalMessages = messages.length;
+  const bucketCount = Math.min(30, totalMessages);
+  const bucketSize = totalMessages / bucketCount;
+
+  type Category = "read" | "write" | "bash" | "search" | "other";
+  const categorize = (name: string): Category => {
+    switch (name) {
+      case "Read":
+        return "read";
+      case "Write":
+      case "Edit":
+      case "MultiEdit":
+        return "write";
+      case "Bash":
+        return "bash";
+      case "Glob":
+      case "Grep":
+      case "WebSearch":
+      case "WebFetch":
+        return "search";
+      default:
+        return "other";
+    }
+  };
+
+  // Initialize buckets
+  const buckets = Array.from({ length: bucketCount }, (_, i) => ({
+    index: i,
+    read: 0,
+    write: 0,
+    bash: 0,
+    search: 0,
+    other: 0,
+  }));
+
+  const totals = { read: 0, write: 0, bash: 0, search: 0, other: 0 };
+
+  for (const tu of toolUses) {
+    const seq = msgSeq.get(tu.message_id);
+    if (seq === undefined) continue;
+
+    const bucketIdx = Math.min(
+      Math.floor(seq / bucketSize),
+      bucketCount - 1
+    );
+    const category = categorize(tu.tool_name);
+
+    buckets[bucketIdx][category]++;
+    totals[category]++;
+  }
+
+  return c.json({ buckets, totals });
+});
+
 // Get plans linked to a session (via tool_uses referencing .claude/plans/*.md files)
 app.get("/:id/plans", (c) => {
   const db = getDb();

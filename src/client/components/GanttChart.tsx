@@ -223,6 +223,14 @@ export default function GanttChart({ projectId }: GanttChartProps) {
   }, [laneMap]);
 
   const timeRange = useMemo(() => {
+    // When a preset is active, use its boundaries as the visible range
+    if (range) {
+      const min = new Date(range.since).getTime();
+      const max = new Date(range.until).getTime();
+      const padding = (max - min) * 0.02;
+      return { min: min - padding, max: max + padding };
+    }
+    // "All" preset: derive from data
     if (sorted.length === 0) return { min: Date.now() - 86400000, max: Date.now() };
     let min = Infinity;
     let max = -Infinity;
@@ -239,7 +247,7 @@ export default function GanttChart({ projectId }: GanttChartProps) {
     }
     const padding = (max - min) * 0.02 || 3600000;
     return { min: min - padding, max: max + padding };
-  }, [sorted, commits]);
+  }, [sorted, commits, range]);
 
   const chartHeight = TOP_MARGIN + Math.max(laneCount, 1) * ROW_HEIGHT + BOTTOM_MARGIN;
   const drawWidth = chartWidth - LEFT_MARGIN - RIGHT_MARGIN;

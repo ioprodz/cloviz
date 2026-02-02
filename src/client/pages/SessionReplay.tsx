@@ -9,6 +9,7 @@ import DiffViewer from "../components/DiffViewer";
 import MarkdownView from "../components/MarkdownView";
 import SessionTodos from "../components/SessionTodos";
 import SessionCommits from "../components/SessionCommits";
+import SessionTimeline from "../components/SessionTimeline";
 import { formatCost } from "../utils/format";
 import { useState, useRef, useCallback } from "react";
 
@@ -240,6 +241,7 @@ export default function SessionReplay() {
             {id?.slice(0, 8)}
           </div>
         </div>
+        {id && <SessionTimeline sessionId={id} />}
       </div>
 
       {/* Pagination top */}
