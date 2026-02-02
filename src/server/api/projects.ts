@@ -389,4 +389,135 @@ app.get("/:id/todos", (c) => {
   return c.json({ todos, statusCounts });
 });
 
+// Enriched sessions for a project — file counts, plan/todo indicators, cost
+app.get("/:id/sessions-enriched", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(id);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  // Base sessions with file counts and todo counts via subqueries
+  const sessions = db
+    .prepare(
+      `SELECT s.id, s.summary, s.first_prompt, s.message_count,
+              s.created_at, s.modified_at, s.git_branch, s.slug, s.is_sidechain,
+              COALESCE(reads.cnt, 0) as files_read_count,
+              COALESCE(writes.cnt, 0) as files_written_count,
+              COALESCE(plan_check.cnt, 0) > 0 as has_plan,
+              COALESCE(todo_check.cnt, 0) as todo_count
+       FROM sessions s
+       LEFT JOIN (
+         SELECT session_id, COUNT(DISTINCT
+           json_extract(input_json, '$.file_path')
+         ) as cnt
+         FROM tool_uses WHERE tool_name = 'Read'
+         GROUP BY session_id
+       ) reads ON reads.session_id = s.id
+       LEFT JOIN (
+         SELECT session_id, COUNT(DISTINCT
+           json_extract(input_json, '$.file_path')
+         ) as cnt
+         FROM tool_uses WHERE tool_name IN ('Write', 'Edit', 'MultiEdit')
+         GROUP BY session_id
+       ) writes ON writes.session_id = s.id
+       LEFT JOIN (
+         SELECT session_id, COUNT(*) as cnt
+         FROM tool_uses
+         WHERE tool_name IN ('Write', 'Edit', 'MultiEdit', 'Read')
+         AND input_json LIKE '%/.claude/plans/%.md%'
+         GROUP BY session_id
+       ) plan_check ON plan_check.session_id = s.id
+       LEFT JOIN (
+         SELECT session_id, COUNT(*) as cnt
+         FROM todos GROUP BY session_id
+       ) todo_check ON todo_check.session_id = s.id
+       WHERE s.project_id = ?
+       ORDER BY s.modified_at DESC`
+    )
+    .all(id) as any[];
+
+  // Compute costs per session (group by session + model, then aggregate)
+  const costRows = db
+    .prepare(
+      `SELECT m.session_id, m.model,
+              SUM(m.input_tokens) as input_tokens,
+              SUM(m.output_tokens) as output_tokens,
+              SUM(m.cache_creation_tokens) as cache_creation_tokens,
+              SUM(m.cache_read_tokens) as cache_read_tokens
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE s.project_id = ? AND m.model IS NOT NULL AND m.model != ''
+       GROUP BY m.session_id, m.model`
+    )
+    .all(id) as {
+    session_id: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_tokens: number;
+    cache_read_tokens: number;
+  }[];
+
+  // Aggregate costs per session
+  const sessionCostMap = new Map<string, CostWithSavings[]>();
+  for (const row of costRows) {
+    const cost = calculateCost(
+      row.model,
+      row.input_tokens ?? 0,
+      row.output_tokens ?? 0,
+      row.cache_creation_tokens ?? 0,
+      row.cache_read_tokens ?? 0
+    );
+    if (!sessionCostMap.has(row.session_id)) {
+      sessionCostMap.set(row.session_id, []);
+    }
+    sessionCostMap.get(row.session_id)!.push(cost);
+  }
+
+  // Also fetch plan-to-session mapping so frontend can group by plan
+  const planToolRows = db
+    .prepare(
+      `SELECT DISTINCT tu.input_json, tu.session_id
+       FROM tool_uses tu JOIN sessions s ON tu.session_id = s.id
+       WHERE s.project_id = ? AND tu.tool_name IN ('Write','Edit','MultiEdit','Read')
+       AND tu.input_json LIKE '%/.claude/plans/%.md%'`
+    )
+    .all(id) as { input_json: string; session_id: string }[];
+
+  const planSessionMap: Record<string, string[]> = {};
+  const planPathRegex = /\.claude\/plans\/([^/]+\.md)/;
+  for (const row of planToolRows) {
+    try {
+      const input = JSON.parse(row.input_json || "{}");
+      const pathValue = input.file_path || input.path || "";
+      const match = pathValue.match(planPathRegex);
+      if (match) {
+        const filename = match[1];
+        if (!planSessionMap[filename]) {
+          planSessionMap[filename] = [];
+        }
+        if (!planSessionMap[filename].includes(row.session_id)) {
+          planSessionMap[filename].push(row.session_id);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  const enriched = sessions.map((s: any) => {
+    const costs = sessionCostMap.get(s.id);
+    return {
+      ...s,
+      has_plan: !!s.has_plan,
+      total_cost: costs ? aggregateCosts(costs).totalCost : 0,
+    };
+  });
+
+  return c.json({ sessions: enriched, planSessionMap });
+});
+
 export default app;

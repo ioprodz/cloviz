@@ -2,7 +2,9 @@ import { useParams, Link } from "react-router-dom";
 import { useState } from "react";
 import { useApi } from "../hooks/useApi";
 import StatsCard from "../components/StatsCard";
-import SessionList from "../components/SessionList";
+import SessionCardGrid, {
+  type EnrichedSession,
+} from "../components/SessionCard";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import MarkdownView from "../components/MarkdownView";
 import { formatCost } from "../utils/format";
@@ -28,23 +30,9 @@ interface ProjectAnalytics {
   messageCount: number;
 }
 
-interface Session {
-  id: string;
-  summary?: string;
-  first_prompt?: string;
-  message_count: number;
-  created_at?: string;
-  modified_at?: string;
-  git_branch?: string;
-  slug?: string;
-  is_sidechain?: number;
-  project_name?: string;
-  project_path?: string;
-}
-
-interface SessionsResponse {
-  sessions: Session[];
-  total: number;
+interface EnrichedSessionsResponse {
+  sessions: EnrichedSession[];
+  planSessionMap: Record<string, string[]>;
 }
 
 interface ProjectPlan {
@@ -88,8 +76,11 @@ export default function ProjectDetail() {
     `/api/projects/${id}/analytics`,
     [id]
   );
-  const { data: sessionsData, loading: sessionsLoading } =
-    useApi<SessionsResponse>(`/api/projects/${id}`, [id]);
+  const { data: enrichedData, loading: enrichedLoading } =
+    useApi<EnrichedSessionsResponse>(
+      `/api/projects/${id}/sessions-enriched`,
+      [id]
+    );
   const { data: plansData } = useApi<ProjectPlansResponse>(
     `/api/projects/${id}/plans`,
     [id]
@@ -111,12 +102,17 @@ export default function ProjectDetail() {
   if (!data) return null;
 
   const { project, costs, sessionCount, messageCount } = data;
-  const sessions = sessionsData?.sessions ?? [];
+  const enrichedSessions = enrichedData?.sessions ?? [];
+  const planSessionMap = enrichedData?.planSessionMap ?? {};
+  const plans = plansData?.plans ?? [];
 
   const savingsPct =
     costs.costWithoutCache > 0
       ? ((costs.cacheSavings / costs.costWithoutCache) * 100).toFixed(0)
       : "0";
+
+  // Build a lookup for enriched sessions by id
+  const sessionById = new Map(enrichedSessions.map((s) => [s.id, s]));
 
   return (
     <div className="space-y-6">
@@ -148,36 +144,45 @@ export default function ProjectDetail() {
         />
       </div>
 
-      {/* Session list */}
+      {/* Sessions as cards */}
       <div className="bg-surface-light rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-3 border-b border-border">
           <h3 className="text-sm font-medium text-gray-400">
-            Sessions ({sessions.length})
+            Sessions ({enrichedSessions.length})
           </h3>
         </div>
-        {sessionsLoading ? (
+        {enrichedLoading ? (
           <div className="p-4">
-            <LoadingSkeleton variant="text" count={5} />
+            <LoadingSkeleton variant="card" count={6} />
           </div>
         ) : (
-          <SessionList sessions={sessions} />
+          <SessionCardGrid sessions={enrichedSessions} />
         )}
       </div>
 
-      {/* Plans section */}
-      {(plansData?.plans ?? []).length > 0 && (
-        <div className="bg-surface-light rounded-xl border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border">
-            <h3 className="text-sm font-medium text-gray-400">
-              Plans ({plansData!.plans.length})
-            </h3>
-          </div>
-          <div className="divide-y divide-border/50">
-            {plansData!.plans.map((plan) => (
-              <div key={plan.id}>
+      {/* Plans section with grouped session cards */}
+      {plans.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-400 px-1">
+            Plans ({plans.length})
+          </h3>
+          {plans.map((plan) => {
+            const planSessions = (
+              planSessionMap[plan.filename] ?? plan.session_ids ?? []
+            )
+              .map((sid) => sessionById.get(sid))
+              .filter(Boolean) as EnrichedSession[];
+
+            return (
+              <div
+                key={plan.id}
+                className="bg-surface-light rounded-xl border border-border overflow-hidden"
+              >
                 <button
                   onClick={() =>
-                    setExpandedPlan(expandedPlan === plan.id ? null : plan.id)
+                    setExpandedPlan(
+                      expandedPlan === plan.id ? null : plan.id
+                    )
                   }
                   className="w-full text-left px-5 py-3 hover:bg-surface-lighter transition-colors flex items-center gap-3"
                 >
@@ -190,20 +195,28 @@ export default function ProjectDetail() {
                   <span className="text-[10px] text-gray-600">
                     {new Date(plan.mtime).toLocaleDateString()}
                   </span>
-                  {plan.session_ids.length > 0 && (
+                  {planSessions.length > 0 && (
                     <span className="text-[10px] bg-surface-lighter text-gray-500 px-1.5 py-0.5 rounded">
-                      {plan.session_ids.length} session{plan.session_ids.length !== 1 ? "s" : ""}
+                      {planSessions.length} session
+                      {planSessions.length !== 1 ? "s" : ""}
                     </span>
                   )}
                 </button>
                 {expandedPlan === plan.id && (
-                  <div className="px-5 py-3 max-h-96 overflow-y-auto border-t border-border/50 bg-surface/50">
-                    <MarkdownView content={plan.content} />
-                  </div>
+                  <>
+                    <div className="px-5 py-3 max-h-96 overflow-y-auto border-t border-border/50 bg-surface/50">
+                      <MarkdownView content={plan.content} />
+                    </div>
+                    {planSessions.length > 0 && (
+                      <div className="border-t border-border/50">
+                        <SessionCardGrid sessions={planSessions} />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
 
