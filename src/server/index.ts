@@ -17,6 +17,7 @@ import todosApi from "./api/todos";
 import fileHistoryApi from "./api/file-history";
 import debugApi from "./api/debug";
 import costsApi from "./api/costs";
+import commitsApi from "./api/commits";
 import { createWatcherApi } from "./api/watcher-api";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -49,6 +50,7 @@ app.route("/api/plans", plansApi);
 app.route("/api/todos", todosApi);
 app.route("/api/file-history", fileHistoryApi);
 app.route("/api/debug", debugApi);
+app.route("/api/commits", commitsApi);
 app.route("/api/watcher", createWatcherApi(ctx));
 
 // Serve static files in production

@@ -399,7 +399,7 @@ app.get("/:id/sessions-enriched", (c) => {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  // Base sessions with file counts and todo counts via subqueries
+  // Base sessions with file counts, todo counts, and commit counts via subqueries
   const sessions = db
     .prepare(
       `SELECT s.id, s.summary, s.first_prompt, s.message_count,
@@ -407,7 +407,8 @@ app.get("/:id/sessions-enriched", (c) => {
               COALESCE(reads.cnt, 0) as files_read_count,
               COALESCE(writes.cnt, 0) as files_written_count,
               COALESCE(plan_check.cnt, 0) > 0 as has_plan,
-              COALESCE(todo_check.cnt, 0) as todo_count
+              COALESCE(todo_check.cnt, 0) as todo_count,
+              COALESCE(commit_check.cnt, 0) as commit_count
        FROM sessions s
        LEFT JOIN (
          SELECT session_id, COUNT(DISTINCT
@@ -434,6 +435,10 @@ app.get("/:id/sessions-enriched", (c) => {
          SELECT session_id, COUNT(*) as cnt
          FROM todos GROUP BY session_id
        ) todo_check ON todo_check.session_id = s.id
+       LEFT JOIN (
+         SELECT session_id, COUNT(*) as cnt
+         FROM session_commits GROUP BY session_id
+       ) commit_check ON commit_check.session_id = s.id
        WHERE s.project_id = ?
        ORDER BY s.modified_at DESC`
     )

@@ -8,6 +8,7 @@ import FileTree from "../components/FileTree";
 import DiffViewer from "../components/DiffViewer";
 import MarkdownView from "../components/MarkdownView";
 import SessionTodos from "../components/SessionTodos";
+import SessionCommits from "../components/SessionCommits";
 import { formatCost } from "../utils/format";
 import { useState, useRef, useCallback } from "react";
 
@@ -70,7 +71,7 @@ export default function SessionReplay() {
   const [page, setPage] = useState(0);
   const [selectedFile, setSelectedFile] = useState<string>();
   const [diffState, setDiffState] = useState<DiffState | null>(null);
-  const [leftTab, setLeftTab] = useState<"files" | "todos">("files");
+  const [leftTab, setLeftTab] = useState<"files" | "todos" | "commits">("files");
   const [planView, setPlanView] = useState<{ filename: string; content: string } | null>(null);
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const limit = 100;
@@ -320,6 +321,7 @@ export default function SessionReplay() {
   const LEFT_TABS = [
     { key: "files" as const, label: "Files" },
     { key: "todos" as const, label: "Todos" },
+    { key: "commits" as const, label: "Commits" },
   ];
 
   const leftPanelContent = (
@@ -351,6 +353,7 @@ export default function SessionReplay() {
           />
         )}
         {leftTab === "todos" && <SessionTodos sessionId={id!} />}
+        {leftTab === "commits" && <SessionCommits sessionId={id!} />}
       </div>
     </div>
   );

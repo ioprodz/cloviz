@@ -129,6 +129,31 @@ function migrate(db: Database) {
       mtime INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS commits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER REFERENCES projects(id),
+      hash TEXT NOT NULL,
+      short_hash TEXT NOT NULL,
+      subject TEXT,
+      body TEXT,
+      author TEXT,
+      author_email TEXT,
+      timestamp TEXT NOT NULL,
+      files_changed INTEGER DEFAULT 0,
+      insertions INTEGER DEFAULT 0,
+      deletions INTEGER DEFAULT 0,
+      is_claude_authored INTEGER DEFAULT 0,
+      UNIQUE(project_id, hash)
+    );
+
+    CREATE TABLE IF NOT EXISTS session_commits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT REFERENCES sessions(id),
+      commit_id INTEGER REFERENCES commits(id),
+      match_type TEXT NOT NULL,
+      UNIQUE(session_id, commit_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
@@ -137,7 +162,18 @@ function migrate(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
     CREATE INDEX IF NOT EXISTS idx_history_timestamp ON history_entries(timestamp);
     CREATE INDEX IF NOT EXISTS idx_messages_uuid ON messages(uuid);
+    CREATE INDEX IF NOT EXISTS idx_commits_project ON commits(project_id);
+    CREATE INDEX IF NOT EXISTS idx_commits_timestamp ON commits(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_session_commits_session ON session_commits(session_id);
+    CREATE INDEX IF NOT EXISTS idx_session_commits_commit ON session_commits(commit_id);
   `);
+
+  // Add last_indexed_commit to projects (safe to call repeatedly)
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN last_indexed_commit TEXT");
+  } catch {
+    // Column already exists
+  }
 
   // FTS5 virtual tables
   db.exec(`

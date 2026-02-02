@@ -11,6 +11,7 @@ import { parseSessionJsonl } from "./session-parser";
 import { parsePlan, scanAllPlans } from "./plan-parser";
 import { parseTodo, scanAllTodos } from "./todo-parser";
 import { scanFileHistory } from "./file-history-parser";
+import { scanAllProjectCommits, scanProjectCommits } from "./git-parser";
 
 // Only index session JSONLs up to 2MB at startup; larger ones are lazy-loaded on demand
 const STARTUP_MAX_JSONL_SIZE = 2 * 1024 * 1024;
@@ -122,6 +123,11 @@ export function runBackgroundIndex(ctx: PipelineContext) {
   if (count > 0) {
     console.log(`[pipeline] Background: ${count} session JSONL files indexed`);
   }
+
+  // 8. Scan git commits for all projects
+  scanAllProjectCommits(db).catch((e) => {
+    console.error("[pipeline] Error scanning git commits:", e);
+  });
 }
 
 /**
@@ -215,6 +221,20 @@ export function handleFileChange(ctx: PipelineContext, filePath: string): string
     ).run(sessionId, filePath);
 
     parseSessionJsonl(db, sessionId, filePath);
+
+    // Re-scan git commits for the project this session belongs to
+    const session = db
+      .prepare("SELECT project_id FROM sessions WHERE id = ?")
+      .get(sessionId) as { project_id: number } | null;
+    if (session?.project_id) {
+      const project = db
+        .prepare("SELECT id, path FROM projects WHERE id = ?")
+        .get(session.project_id) as { id: number; path: string } | null;
+      if (project?.path) {
+        scanProjectCommits(db, project.id, project.path).catch(() => {});
+      }
+    }
+
     return "session:updated";
   }
 

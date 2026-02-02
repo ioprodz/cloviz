@@ -16,6 +16,7 @@ export interface EnrichedSession {
   files_written_count: number;
   has_plan: boolean;
   todo_count: number;
+  commit_count: number;
   total_cost: number;
 }
 
@@ -95,6 +96,14 @@ export default function SessionCardGrid({ sessions }: SessionCardGridProps) {
             {s.has_plan && (
               <span className="text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded">
                 plan
+              </span>
+            )}
+            {s.commit_count > 0 && (
+              <span className="text-orange-400 flex items-center gap-1" title="Commits">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {s.commit_count} commit{s.commit_count !== 1 ? "s" : ""}
               </span>
             )}
             {s.todo_count > 0 && (
