@@ -1,7 +1,11 @@
 import { BrowserRouter, Routes, Route, NavLink, Link } from "react-router-dom";
 import { useState } from "react";
 import WatcherToggle from "./components/WatcherToggle";
+import HooksToggle from "./components/HooksToggle";
+import HooksBanner from "./components/HooksBanner";
+import ProjectSidebar from "./components/ProjectSidebar";
 import { useWebSocketStatus } from "./hooks/useWebSocket";
+import { ProjectsProvider } from "./hooks/useProjects";
 import ProjectOverview from "./pages/ProjectOverview";
 import ProjectDetail from "./pages/ProjectDetail";
 import SessionReplay from "./pages/SessionReplay";
@@ -22,11 +26,6 @@ function NavBar() {
     <nav className="bg-surface border-b border-border sticky top-0 z-50">
       <div className="max-w-[1600px] mx-auto px-4">
         <div className="flex items-center h-12 gap-4">
-          {/* Logo */}
-          <Link to="/" className="text-primary font-bold text-lg mr-2 flex-shrink-0">
-            cloviz
-          </Link>
-
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-0.5 flex-1 overflow-x-auto">
             {NAV_ITEMS.map((item) => (
@@ -65,6 +64,7 @@ function NavBar() {
               }`}
               title={wsConnected ? "WebSocket connected" : "WebSocket disconnected"}
             />
+            <HooksToggle />
             <WatcherToggle />
           </div>
         </div>
@@ -99,18 +99,26 @@ function NavBar() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-950">
-        <NavBar />
-        <main className="max-w-[1600px] mx-auto p-4">
+      <ProjectsProvider>
+        <ProjectSidebar />
+        <div className="min-h-screen bg-gray-950 md:ml-[68px]">
+          <NavBar />
+          <HooksBanner />
           <Routes>
-            <Route path="/" element={<ProjectOverview />} />
-            <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/sessions/:id" element={<SessionReplay />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/search" element={<Search />} />
+            <Route path="*" element={
+              <main className="max-w-[1600px] mx-auto p-4">
+                <Routes>
+                  <Route path="/" element={<ProjectOverview />} />
+                  <Route path="/projects/:id" element={<ProjectDetail />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/search" element={<Search />} />
+                </Routes>
+              </main>
+            } />
           </Routes>
-        </main>
-      </div>
+        </div>
+      </ProjectsProvider>
     </BrowserRouter>
   );
 }

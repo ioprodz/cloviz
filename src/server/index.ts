@@ -19,6 +19,7 @@ import debugApi from "./api/debug";
 import costsApi from "./api/costs";
 import commitsApi from "./api/commits";
 import { createWatcherApi } from "./api/watcher-api";
+import { createHooksApi } from "./api/hooks-api";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PORT = parseInt(process.env.PORT || "3456");
@@ -52,6 +53,7 @@ app.route("/api/file-history", fileHistoryApi);
 app.route("/api/debug", debugApi);
 app.route("/api/commits", commitsApi);
 app.route("/api/watcher", createWatcherApi(ctx));
+app.route("/api/hooks", createHooksApi(ctx));
 
 // Serve static files in production
 if (IS_PROD) {

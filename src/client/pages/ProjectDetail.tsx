@@ -8,54 +8,16 @@ import SessionCardGrid, {
 import KanbanBoard from "../components/KanbanBoard";
 import GanttChart from "../components/GanttChart";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import ProjectLogo from "../components/ProjectLogo";
 import { formatCost } from "../utils/format";
+import { type CostWithSavings } from "../utils/project";
 
 const SESSION_VIEWS = [
-  { key: "cards", label: "Cards" },
   { key: "board", label: "Board" },
+  { key: "cards", label: "Cards" },
   { key: "gantt", label: "Gantt" },
 ] as const;
 type SessionView = (typeof SESSION_VIEWS)[number]["key"];
-
-const API_BASE =
-  typeof window !== "undefined"
-    ? `http://${window.location.hostname}:3456`
-    : "http://localhost:3456";
-
-const INITIALS_COLORS = [
-  "from-amber-600 to-orange-700",
-  "from-blue-600 to-indigo-700",
-  "from-emerald-600 to-teal-700",
-  "from-purple-600 to-violet-700",
-  "from-rose-600 to-pink-700",
-  "from-cyan-600 to-sky-700",
-  "from-lime-600 to-green-700",
-  "from-fuchsia-600 to-purple-700",
-];
-
-function getInitials(name: string): string {
-  const parts = name.replace(/[-_]/g, " ").split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-function getColorIndex(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % INITIALS_COLORS.length;
-}
-
-interface CostWithSavings {
-  inputCost: number;
-  outputCost: number;
-  cacheWriteCost: number;
-  cacheReadCost: number;
-  totalCost: number;
-  costWithoutCache: number;
-  cacheSavings: number;
-}
 
 interface ProjectAnalytics {
   project: {
@@ -91,8 +53,7 @@ export default function ProjectDetail() {
       [id, page]
     );
   useWebSocket("session:updated", () => { refetch(); refetchSessions(); });
-  const [logoImgFailed, setLogoImgFailed] = useState(false);
-  const [sessionView, setSessionView] = useState<SessionView>("cards");
+  const [sessionView, setSessionView] = useState<SessionView>("board");
 
   if (loading) {
     return (
@@ -112,26 +73,6 @@ export default function ProjectDetail() {
       ? ((costs.cacheSavings / costs.costWithoutCache) * 100).toFixed(0)
       : "0";
 
-  const logoEl = (() => {
-    if (project.logo_path && !logoImgFailed) {
-      return (
-        <img
-          src={`${API_BASE}/api/projects/logo/${project.id}`}
-          alt=""
-          className="w-11 h-11 rounded-lg object-contain bg-surface-lighter flex-shrink-0"
-          onError={() => setLogoImgFailed(true)}
-        />
-      );
-    }
-    const initials = getInitials(project.display_name);
-    const color = INITIALS_COLORS[getColorIndex(project.display_name)];
-    return (
-      <div className={`w-11 h-11 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}>
-        <span className="text-sm font-bold text-white/90">{initials}</span>
-      </div>
-    );
-  })();
-
   return (
     <div className="space-y-6">
       {/* Header + Stats (compact) */}
@@ -139,7 +80,7 @@ export default function ProjectDetail() {
         <div className="flex items-center gap-4 flex-wrap">
           {/* Logo + project info */}
           <div className="flex items-center gap-3 min-w-0">
-            {logoEl}
+            <ProjectLogo project={project} size="w-11 h-11" textSize="text-sm" />
             <div className="min-w-0">
               <Link to="/" className="text-[10px] text-gray-500 hover:text-gray-400">
                 &larr; Projects

@@ -362,7 +362,7 @@ export default function SessionReplay() {
 
   return (
     <>
-      <div style={{ height: "calc(100vh - 80px)" }}>
+      <div style={{ height: "calc(100vh - 48px)" }}>
         <SplitPane left={leftPanelContent} right={planViewContent || conversationContent} />
       </div>
       {diffState && (

@@ -1,110 +1,13 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
-import { useApi } from "../hooks/useApi";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useProjects } from "../hooks/useProjects";
+import ProjectLogo from "../components/ProjectLogo";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { formatCost } from "../utils/format";
+import { extractRepoName } from "../utils/project";
 import { formatDistanceToNow } from "date-fns";
 
-const API_BASE =
-  typeof window !== "undefined"
-    ? `http://${window.location.hostname}:3456`
-    : "http://localhost:3456";
-
-const INITIALS_COLORS = [
-  "from-amber-600 to-orange-700",
-  "from-blue-600 to-indigo-700",
-  "from-emerald-600 to-teal-700",
-  "from-purple-600 to-violet-700",
-  "from-rose-600 to-pink-700",
-  "from-cyan-600 to-sky-700",
-  "from-lime-600 to-green-700",
-  "from-fuchsia-600 to-purple-700",
-];
-
-function getInitials(name: string): string {
-  const parts = name.replace(/[-_]/g, " ").split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-function getColorIndex(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % INITIALS_COLORS.length;
-}
-
-function extractRepoName(url: string): string {
-  try {
-    const parsed = new URL(url);
-    // Return path without leading slash, e.g. "user/repo"
-    return parsed.pathname.replace(/^\//, "");
-  } catch {
-    return url;
-  }
-}
-
-function ProjectLogo({ project }: { project: Project }) {
-  const [imgFailed, setImgFailed] = useState(false);
-
-  if (project.logo_path && !imgFailed) {
-    return (
-      <img
-        src={`${API_BASE}/api/projects/logo/${project.id}`}
-        alt=""
-        className="w-9 h-9 rounded-lg object-contain bg-surface-lighter flex-shrink-0"
-        onError={() => setImgFailed(true)}
-      />
-    );
-  }
-
-  const initials = getInitials(project.display_name);
-  const color = INITIALS_COLORS[getColorIndex(project.display_name)];
-
-  return (
-    <div
-      className={`w-9 h-9 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}
-    >
-      <span className="text-xs font-bold text-white/90">{initials}</span>
-    </div>
-  );
-}
-
-interface Project {
-  id: number;
-  path: string;
-  display_name: string;
-  session_count: number;
-  message_count: number;
-  first_session?: string;
-  last_session?: string;
-  branches?: string;
-  logo_path?: string | null;
-  remote_url?: string | null;
-}
-
-interface CostWithSavings {
-  inputCost: number;
-  outputCost: number;
-  cacheWriteCost: number;
-  cacheReadCost: number;
-  totalCost: number;
-  costWithoutCache: number;
-  cacheSavings: number;
-}
-
-interface ProjectsResponse {
-  projects: Project[];
-}
-
 export default function ProjectOverview() {
-  const { data, loading, refetch } = useApi<ProjectsResponse>("/api/projects");
-  const { data: costData, refetch: refetchCosts } = useApi<Record<number, CostWithSavings>>(
-    "/api/projects/costs"
-  );
-  useWebSocket("session:updated", () => { refetch(); refetchCosts(); });
+  const { projects, costs, loading } = useProjects();
 
   if (loading) {
     return (
@@ -115,9 +18,6 @@ export default function ProjectOverview() {
       </div>
     );
   }
-
-  const projects = data?.projects ?? [];
-  const costs = costData || {};
 
   return (
     <div className="space-y-6">
@@ -135,10 +35,10 @@ export default function ProjectOverview() {
             <Link
               key={p.id}
               to={`/projects/${p.id}`}
-              className="bg-surface-light rounded-xl p-5 border border-border hover:border-primary/50 transition-colors"
+              className="rounded-xl p-5 border border-border hover:border-primary/50 transition-colors"
             >
               <div className="flex items-start gap-3">
-                <ProjectLogo project={p} />
+                <ProjectLogo project={p} size="w-14 h-14" textSize="text-base" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between">
                     <div className="text-sm font-medium text-gray-200 mb-1 truncate">

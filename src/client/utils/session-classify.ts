@@ -41,7 +41,7 @@ export const KANBAN_COLUMNS: KanbanColumnDef[] = [
   },
 ];
 
-const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000;
+const ACTIVE_THRESHOLD_MS = 30 * 60 * 1000;
 
 export function classifySession(session: EnrichedSession): KanbanCategory {
   const now = Date.now();

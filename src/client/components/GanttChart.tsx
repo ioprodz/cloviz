@@ -48,6 +48,43 @@ const TOP_MARGIN = 30;
 const BOTTOM_MARGIN = 20;
 const MIN_BAR_WIDTH = 4;
 const LANE_GAP_MS = 5 * 60 * 1000; // 5 minute gap buffer between sessions in a lane
+const GAP_THRESHOLD_MS = 30 * 60 * 1000; // Gaps larger than 30 min are compressed
+const GAP_VISUAL_WIDTH = 20; // pixels for gap indicator
+const SEGMENT_PADDING_MS = 5 * 60 * 1000; // breathing room around each segment
+const MIN_PX_PER_SESSION = 80; // minimum chart width per session to prevent squeezing
+
+interface TimeSegment {
+  start: number;
+  end: number;
+}
+
+function computeActiveSegments(sorted: EnrichedSession[]): TimeSegment[] {
+  if (sorted.length === 0) return [];
+
+  const intervals = sorted.map((s) => ({
+    start: new Date(s.created_at!).getTime(),
+    end: new Date(s.modified_at!).getTime(),
+  }));
+
+  // sorted is already ordered by created_at
+  const merged: TimeSegment[] = [{ ...intervals[0] }];
+
+  for (let i = 1; i < intervals.length; i++) {
+    const last = merged[merged.length - 1];
+    if (intervals[i].start <= last.end + GAP_THRESHOLD_MS) {
+      last.end = Math.max(last.end, intervals[i].end);
+    } else {
+      merged.push({ ...intervals[i] });
+    }
+  }
+
+  for (const seg of merged) {
+    seg.start -= SEGMENT_PADDING_MS;
+    seg.end += SEGMENT_PADDING_MS;
+  }
+
+  return merged;
+}
 
 function computeTimeRange(preset: TimePreset): { since: string; until: string } | null {
   if (preset === "all") return null;
@@ -160,7 +197,7 @@ function categoryColor(session: EnrichedSession): string {
 }
 
 export default function GanttChart({ projectId }: GanttChartProps) {
-  const [timePreset, setTimePreset] = useState<TimePreset>("1w");
+  const [timePreset, setTimePreset] = useState<TimePreset>("1d");
 
   const range = useMemo(() => computeTimeRange(timePreset), [timePreset]);
   const sessionsPath = useMemo(() => {
@@ -185,6 +222,7 @@ export default function GanttChart({ projectId }: GanttChartProps) {
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(800);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
 
@@ -200,6 +238,16 @@ export default function GanttChart({ projectId }: GanttChartProps) {
     setChartWidth(el.clientWidth);
     return () => ro.disconnect();
   }, []);
+
+  // Auto-scroll to the end (most recent sessions)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && !sessionsLoading) {
+      requestAnimationFrame(() => {
+        el.scrollLeft = el.scrollWidth - el.clientWidth;
+      });
+    }
+  }, [sessionsLoading, timePreset]);
 
   const sessions = sessionsData?.sessions ?? [];
   const sorted = useMemo(
@@ -222,62 +270,82 @@ export default function GanttChart({ projectId }: GanttChartProps) {
     return Math.max(...laneMap.values()) + 1;
   }, [laneMap]);
 
-  const timeRange = useMemo(() => {
-    // When a preset is active, use its boundaries as the visible range
-    if (range) {
-      const min = new Date(range.since).getTime();
-      const max = new Date(range.until).getTime();
-      const padding = (max - min) * 0.02;
-      return { min: min - padding, max: max + padding };
-    }
-    // "All" preset: derive from data
-    if (sorted.length === 0) return { min: Date.now() - 86400000, max: Date.now() };
-    let min = Infinity;
-    let max = -Infinity;
-    for (const s of sorted) {
-      const created = new Date(s.created_at!).getTime();
-      const modified = new Date(s.modified_at!).getTime();
-      if (created < min) min = created;
-      if (modified > max) max = modified;
-    }
-    for (const c of commits) {
-      const ts = new Date(c.timestamp).getTime();
-      if (ts < min) min = ts;
-      if (ts > max) max = ts;
-    }
-    const padding = (max - min) * 0.02 || 3600000;
-    return { min: min - padding, max: max + padding };
-  }, [sorted, commits, range]);
+  const segments = useMemo(() => computeActiveSegments(sorted), [sorted]);
 
   const chartHeight = TOP_MARGIN + Math.max(laneCount, 1) * ROW_HEIGHT + BOTTOM_MARGIN;
-  const drawWidth = chartWidth - LEFT_MARGIN - RIGHT_MARGIN;
+  const minSvgWidth = sorted.length * MIN_PX_PER_SESSION + LEFT_MARGIN + RIGHT_MARGIN;
+  const svgWidth = Math.max(chartWidth, minSvgWidth);
+  const drawWidth = svgWidth - LEFT_MARGIN - RIGHT_MARGIN;
 
-  function timeToX(ts: number): number {
-    const r = timeRange.max - timeRange.min;
-    if (r === 0) return LEFT_MARGIN;
-    return LEFT_MARGIN + ((ts - timeRange.min) / r) * drawWidth;
-  }
+  const { timeToX, gapPositions } = useMemo(() => {
+    if (segments.length === 0) {
+      return {
+        timeToX: (_ts: number) => LEFT_MARGIN,
+        gapPositions: [] as number[],
+      };
+    }
 
-  const ticks = useMemo(
-    () => generateTimeAxisTicks(timeRange.min, timeRange.max),
-    [timeRange]
-  );
+    const totalActiveTime = segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0);
+    const gapCount = Math.max(0, segments.length - 1);
+    const totalGapWidth = gapCount * GAP_VISUAL_WIDTH;
+    const activeDrawWidth = Math.max(1, drawWidth - totalGapWidth);
+
+    const segStarts: number[] = [];
+    const segWidths: number[] = [];
+    let cumX = LEFT_MARGIN;
+    for (let i = 0; i < segments.length; i++) {
+      segStarts.push(cumX);
+      const w = ((segments[i].end - segments[i].start) / totalActiveTime) * activeDrawWidth;
+      segWidths.push(w);
+      cumX += w;
+      if (i < segments.length - 1) cumX += GAP_VISUAL_WIDTH;
+    }
+
+    const gaps: number[] = [];
+    for (let i = 0; i < segments.length - 1; i++) {
+      gaps.push(segStarts[i] + segWidths[i] + GAP_VISUAL_WIDTH / 2);
+    }
+
+    function mapTimeToX(ts: number): number {
+      for (let i = 0; i < segments.length; i++) {
+        if (ts <= segments[i].end || i === segments.length - 1) {
+          const frac = Math.max(0, Math.min(1, (ts - segments[i].start) / (segments[i].end - segments[i].start)));
+          return segStarts[i] + frac * segWidths[i];
+        }
+        if (i < segments.length - 1 && ts < segments[i + 1].start) {
+          return segStarts[i] + segWidths[i];
+        }
+      }
+      return LEFT_MARGIN;
+    }
+
+    return { timeToX: mapTimeToX, gapPositions: gaps };
+  }, [segments, drawWidth]);
+
+  const ticks = useMemo(() => {
+    const allTicks: { ts: number; label: string }[] = [];
+    for (const seg of segments) {
+      allTicks.push(...generateTimeAxisTicks(seg.start, seg.end));
+    }
+    return allTicks;
+  }, [segments]);
 
   function showTooltip(
     e: React.MouseEvent<SVGElement>,
     content: React.ReactNode
   ) {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const rect = scrollEl.getBoundingClientRect();
     setTooltip({
-      x: e.clientX - rect.left + 12,
+      x: e.clientX - rect.left + scrollEl.scrollLeft + 12,
       y: e.clientY - rect.top - 10,
       content,
     });
   }
 
   return (
-    <div ref={containerRef} className="relative overflow-x-auto p-4">
+    <div ref={containerRef} className="relative p-4">
       {/* Time range preset buttons */}
       <div className="flex gap-1 mb-3 bg-surface rounded-lg p-0.5 border border-border w-fit">
         {TIME_PRESETS.map((p) => (
@@ -302,9 +370,10 @@ export default function GanttChart({ projectId }: GanttChartProps) {
           No sessions in this time range
         </div>
       ) : (
-        <>
+        <div ref={scrollRef} className="overflow-x-auto">
+         <div className="relative" style={{ width: svgWidth }}>
           <svg
-            width={chartWidth}
+            width={svgWidth}
             height={chartHeight}
             className="select-none"
           >
@@ -313,7 +382,7 @@ export default function GanttChart({ projectId }: GanttChartProps) {
               <line
                 key={`grid-${i}`}
                 x1={LEFT_MARGIN}
-                x2={chartWidth - RIGHT_MARGIN}
+                x2={svgWidth - RIGHT_MARGIN}
                 y1={TOP_MARGIN + (i + 1) * ROW_HEIGHT}
                 y2={TOP_MARGIN + (i + 1) * ROW_HEIGHT}
                 stroke="#374151"
@@ -321,10 +390,35 @@ export default function GanttChart({ projectId }: GanttChartProps) {
               />
             ))}
 
+            {/* Gap indicators */}
+            {gapPositions.map((gx, i) => (
+              <g key={`gap-${i}`}>
+                <line
+                  x1={gx}
+                  x2={gx}
+                  y1={TOP_MARGIN}
+                  y2={chartHeight - BOTTOM_MARGIN}
+                  stroke="#374151"
+                  strokeWidth={1}
+                  strokeDasharray="2 4"
+                  opacity={0.6}
+                />
+                <text
+                  x={gx}
+                  y={TOP_MARGIN - 10}
+                  textAnchor="middle"
+                  fill="#6b7280"
+                  fontSize={10}
+                >
+                  ⋯
+                </text>
+              </g>
+            ))}
+
             {/* Time axis ticks */}
             {ticks.map((tick, i) => {
               const x = timeToX(tick.ts);
-              if (x < LEFT_MARGIN || x > chartWidth - RIGHT_MARGIN) return null;
+              if (x < LEFT_MARGIN || x > svgWidth - RIGHT_MARGIN) return null;
               return (
                 <g key={`tick-${i}`}>
                   <line
@@ -424,9 +518,12 @@ export default function GanttChart({ projectId }: GanttChartProps) {
             })}
 
             {/* Commit vertical lines */}
-            {commits.map((commit) => {
+            {commits.filter((c) => {
+              const ts = new Date(c.timestamp).getTime();
+              return segments.some((seg) => ts >= seg.start && ts <= seg.end);
+            }).map((commit) => {
               const x = timeToX(new Date(commit.timestamp).getTime());
-              if (x < LEFT_MARGIN || x > chartWidth - RIGHT_MARGIN) return null;
+              if (x < LEFT_MARGIN || x > svgWidth - RIGHT_MARGIN) return null;
               return (
                 <line
                   key={`commit-${commit.id}`}
@@ -480,7 +577,8 @@ export default function GanttChart({ projectId }: GanttChartProps) {
               {tooltip.content}
             </div>
           )}
-        </>
+         </div>
+        </div>
       )}
     </div>
   );
