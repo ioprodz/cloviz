@@ -2,34 +2,20 @@ import { BrowserRouter, Routes, Route, NavLink, Link } from "react-router-dom";
 import { useState } from "react";
 import WatcherToggle from "./components/WatcherToggle";
 import { useWebSocketStatus } from "./hooks/useWebSocket";
-import Dashboard from "./pages/Dashboard";
-import SessionBrowser from "./pages/SessionBrowser";
-import SessionReplay from "./pages/SessionReplay";
 import ProjectOverview from "./pages/ProjectOverview";
 import ProjectDetail from "./pages/ProjectDetail";
-import UsageAnalytics from "./pages/UsageAnalytics";
-import ToolAnalytics from "./pages/ToolAnalytics";
-import CostDashboard from "./pages/CostDashboard";
+import SessionReplay from "./pages/SessionReplay";
+import Analytics from "./pages/Analytics";
 import Search from "./pages/Search";
 import Plans from "./pages/Plans";
 import Todos from "./pages/Todos";
-import FileHistory from "./pages/FileHistory";
-import ActivityTimeline from "./pages/ActivityTimeline";
-import HourlyPatterns from "./pages/HourlyPatterns";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Dashboard", icon: "H" },
-  { path: "/sessions", label: "Sessions", icon: "S" },
-  { path: "/projects", label: "Projects", icon: "P" },
-  { path: "/costs", label: "Costs", icon: "$" },
-  { path: "/analytics", label: "Usage", icon: "U" },
-  { path: "/tools", label: "Tools", icon: "T" },
+  { path: "/", label: "Projects", icon: "P" },
+  { path: "/analytics", label: "Analytics", icon: "A" },
   { path: "/search", label: "Search", icon: "Q" },
   { path: "/plans", label: "Plans", icon: "D" },
   { path: "/todos", label: "Todos", icon: "L" },
-  { path: "/files", label: "Files", icon: "F" },
-  { path: "/timeline", label: "Timeline", icon: "A" },
-  { path: "/patterns", label: "Patterns", icon: "R" },
 ];
 
 function NavBar() {
@@ -121,21 +107,13 @@ export default function App() {
         <NavBar />
         <main className="max-w-[1600px] mx-auto p-4">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/sessions" element={<SessionBrowser />} />
-            <Route path="/sessions/:id" element={<SessionReplay />} />
-            <Route path="/projects" element={<ProjectOverview />} />
+            <Route path="/" element={<ProjectOverview />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
-            <Route path="/costs" element={<CostDashboard />} />
-            <Route path="/analytics" element={<UsageAnalytics />} />
-            <Route path="/tools" element={<ToolAnalytics />} />
+            <Route path="/sessions/:id" element={<SessionReplay />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/search" element={<Search />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/todos" element={<Todos />} />
-            <Route path="/files" element={<FileHistory />} />
-            <Route path="/files/:session" element={<FileHistory />} />
-            <Route path="/timeline" element={<ActivityTimeline />} />
-            <Route path="/patterns" element={<HourlyPatterns />} />
           </Routes>
         </main>
       </div>

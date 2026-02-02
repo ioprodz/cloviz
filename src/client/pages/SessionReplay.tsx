@@ -3,8 +3,11 @@ import { useApi } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 import ChatMessage from "../components/ChatMessage";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import SplitPane from "../components/SplitPane";
+import FileTree from "../components/FileTree";
+import DiffViewer from "../components/DiffViewer";
 import { formatCost } from "../utils/format";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 
 interface CostWithSavings {
   inputCost: number;
@@ -25,6 +28,7 @@ interface SessionData {
   modified_at?: string;
   git_branch?: string;
   slug?: string;
+  project_id?: number;
   project_name?: string;
   project_path?: string;
   sessionCost?: CostWithSavings | null;
@@ -38,15 +42,43 @@ interface MessagesResponse {
   offset: number;
 }
 
+interface FileOperation {
+  tool: string;
+  message_id: number;
+  timestamp: number;
+}
+
+interface FileEntry {
+  path: string;
+  operations: FileOperation[];
+}
+
+interface FilesResponse {
+  files: FileEntry[];
+}
+
+interface DiffState {
+  fileName: string;
+  oldContent: string;
+  newContent: string;
+}
+
 export default function SessionReplay() {
   const { id } = useParams<{ id: string }>();
   const [page, setPage] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<string>();
+  const [diffState, setDiffState] = useState<DiffState | null>(null);
+  const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const limit = 100;
 
   const { data: session } = useApi<SessionData>(`/api/sessions/${id}`, [id]);
   const { data: msgData, loading, refetch } = useApi<MessagesResponse>(
     `/api/sessions/${id}/messages?limit=${limit}&offset=${page * limit}`,
     [id, page]
+  );
+  const { data: filesData } = useApi<FilesResponse>(
+    `/api/sessions/${id}/files`,
+    [id]
   );
 
   useWebSocket("session:updated", (data: any) => {
@@ -57,20 +89,106 @@ export default function SessionReplay() {
   const toolUses = msgData?.toolUses ?? [];
   const total = msgData?.total ?? 0;
   const totalPages = Math.ceil(total / limit);
+  const files = filesData?.files ?? [];
 
-  return (
-    <div className="space-y-4">
+  const handleFileSelect = useCallback(
+    (path: string, messageId: number) => {
+      setSelectedFile(path);
+      // Find the message element and scroll to it
+      const el = messageRefs.current.get(messageId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.classList.add("ring-1", "ring-primary/50");
+        setTimeout(() => {
+          el.classList.remove("ring-1", "ring-primary/50");
+        }, 2000);
+      }
+    },
+    []
+  );
+
+  const handleViewDiff = useCallback(
+    async (path: string) => {
+      // Try to find Write/Edit operations to build a diff
+      const file = files.find((f) => f.path === path);
+      if (!file) return;
+
+      // Find tool_uses for this file in the current message data
+      const fileToolUses = toolUses.filter((tu: any) => {
+        if (
+          tu.tool_name !== "Write" &&
+          tu.tool_name !== "Edit" &&
+          tu.tool_name !== "MultiEdit"
+        )
+          return false;
+        try {
+          const input = JSON.parse(tu.input_json || "{}");
+          return input.file_path === path || input.path === path;
+        } catch {
+          return false;
+        }
+      });
+
+      if (fileToolUses.length === 0) return;
+
+      // Build a simple diff from Edit operations
+      let oldContent = "";
+      let newContent = "";
+
+      for (const tu of fileToolUses) {
+        try {
+          const input = JSON.parse(tu.input_json || "{}");
+          if (tu.tool_name === "Write") {
+            newContent = input.content || "";
+          } else if (tu.tool_name === "Edit" || tu.tool_name === "MultiEdit") {
+            if (input.old_string && input.new_string) {
+              oldContent += input.old_string + "\n";
+              newContent += input.new_string + "\n";
+            }
+          }
+        } catch {
+          // skip
+        }
+      }
+
+      setDiffState({
+        fileName: path.split("/").pop() || path,
+        oldContent,
+        newContent,
+      });
+    },
+    [files, toolUses]
+  );
+
+  const conversationContent = (
+    <div className="space-y-4 p-4">
       {/* Session header */}
       <div className="bg-surface-light rounded-xl p-5 border border-border">
         <div className="flex items-start justify-between">
           <div>
-            <Link
-              to="/sessions"
-              className="text-xs text-gray-500 hover:text-gray-400"
-            >
-              &larr; Back to sessions
-            </Link>
-            <h2 className="text-lg font-semibold mt-1">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
+              {session?.project_name ? (
+                <>
+                  <Link
+                    to={`/projects/${session.project_id}`}
+                    className="hover:text-gray-400"
+                  >
+                    {session.project_name}
+                  </Link>
+                  <span>&rsaquo;</span>
+                </>
+              ) : (
+                <>
+                  <Link to="/" className="hover:text-gray-400">
+                    Projects
+                  </Link>
+                  <span>&rsaquo;</span>
+                </>
+              )}
+              <span className="text-gray-400">Session</span>
+            </div>
+            <h2 className="text-lg font-semibold">
               {session?.summary || session?.first_prompt || session?.slug || id}
             </h2>
             <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
@@ -100,7 +218,9 @@ export default function SessionReplay() {
               )}
             </div>
           </div>
-          <div className="text-xs text-gray-600 font-mono">{id?.slice(0, 8)}</div>
+          <div className="text-xs text-gray-600 font-mono">
+            {id?.slice(0, 8)}
+          </div>
         </div>
       </div>
 
@@ -143,11 +263,46 @@ export default function SessionReplay() {
         ) : (
           <div className="divide-y divide-border/50 px-4">
             {messages.map((msg: any) => (
-              <ChatMessage key={msg.id} message={msg} toolUses={toolUses} />
+              <div
+                key={msg.id}
+                ref={(el) => {
+                  if (el) messageRefs.current.set(msg.id, el);
+                }}
+                className="transition-all duration-300"
+              >
+                <ChatMessage message={msg} toolUses={toolUses} />
+              </div>
             ))}
           </div>
         )}
       </div>
     </div>
+  );
+
+  const fileTreeContent = (
+    <div className="bg-surface-light border-r border-border h-full">
+      <FileTree
+        files={files}
+        onFileSelect={handleFileSelect}
+        onViewDiff={handleViewDiff}
+        selectedFile={selectedFile}
+      />
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ height: "calc(100vh - 80px)" }}>
+        <SplitPane left={fileTreeContent} right={conversationContent} />
+      </div>
+      {diffState && (
+        <DiffViewer
+          oldContent={diffState.oldContent}
+          newContent={diffState.newContent}
+          fileName={diffState.fileName}
+          onClose={() => setDiffState(null)}
+        />
+      )}
+    </>
   );
 }

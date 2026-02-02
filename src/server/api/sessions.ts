@@ -162,4 +162,63 @@ app.get("/:id/messages", (c) => {
   return c.json({ messages, toolUses, total: total.cnt, limit, offset });
 });
 
+// Get files touched in a session (from tool_uses)
+app.get("/:id/files", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  // Ensure session exists
+  const session = db
+    .prepare("SELECT id FROM sessions WHERE id = ?")
+    .get(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  const toolUses = db
+    .prepare(
+      `SELECT tool_name, input_json, message_id, timestamp
+       FROM tool_uses
+       WHERE session_id = ? AND tool_name IN ('Read', 'Write', 'Edit', 'MultiEdit')
+       ORDER BY timestamp ASC`
+    )
+    .all(id) as {
+    tool_name: string;
+    input_json: string;
+    message_id: number;
+    timestamp: number;
+  }[];
+
+  const fileMap = new Map<
+    string,
+    { tool: string; message_id: number; timestamp: number }[]
+  >();
+
+  for (const tu of toolUses) {
+    let filePath: string | null = null;
+    try {
+      const input = JSON.parse(tu.input_json || "{}");
+      filePath = input.file_path || input.path || null;
+    } catch {
+      continue;
+    }
+    if (!filePath) continue;
+
+    if (!fileMap.has(filePath)) {
+      fileMap.set(filePath, []);
+    }
+    fileMap.get(filePath)!.push({
+      tool: tu.tool_name,
+      message_id: tu.message_id,
+      timestamp: tu.timestamp,
+    });
+  }
+
+  const files = [...fileMap.entries()]
+    .map(([path, operations]) => ({ path, operations }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+
+  return c.json({ files });
+});
+
 export default app;

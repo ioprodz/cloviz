@@ -73,3 +73,50 @@ mark {
   background-size: 200% 100%;
   animation: shimmer 2s ease-in-out infinite;
 }
+
+/* Diff viewer styles */
+.diff-add {
+  background: rgba(16, 185, 129, 0.12);
+  color: #d1fae5;
+  padding: 0 1rem;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.diff-remove {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+  padding: 0 1rem;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.diff-context {
+  color: #9ca3af;
+  padding: 0 1rem;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+.diff-empty {
+  background: rgba(55, 65, 81, 0.3);
+  padding: 0 1rem;
+  min-height: 1.25rem;
+  line-height: 1.25rem;
+}
+
+/* Split pane divider */
+.split-divider {
+  transition: background-color 150ms;
+}
+
+.split-divider:active {
+  background-color: rgba(217, 119, 6, 0.5);
+}
+
+/* File tree */
+.file-tree-node {
+  transition: background-color 100ms;
+  border-radius: 2px;
+  margin: 0 4px;
+}

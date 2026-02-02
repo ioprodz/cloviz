@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { formatCost } from "../utils/format";
+import { formatDistanceToNow } from "date-fns";
 import { TOOLTIP_STYLE, AXIS_STYLE, GRID_STYLE } from "../utils/chart-theme";
 import {
   BarChart,
@@ -159,7 +160,7 @@ export default function ProjectOverview() {
               {p.last_session && (
                 <div className="text-[10px] text-gray-600 mt-2">
                   Last active:{" "}
-                  {new Date(p.last_session).toLocaleDateString()}
+                  {formatDistanceToNow(new Date(p.last_session), { addSuffix: true })}
                 </div>
               )}
             </Link>
