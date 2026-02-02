@@ -1,6 +1,18 @@
 import { Hono } from "hono";
+import { existsSync } from "fs";
+import { join, extname } from "path";
 import { getDb } from "../db";
 import { calculateCost, aggregateCosts, type CostWithSavings } from "../pricing";
+
+const MIME_TYPES: Record<string, string> = {
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
 
 const app = new Hono();
 
@@ -21,6 +33,31 @@ app.get("/", (c) => {
     .all();
 
   return c.json({ projects });
+});
+
+// Serve project logo image — must be before /:id
+app.get("/logo/:id", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  const project = db
+    .prepare("SELECT logo_path FROM projects WHERE id = ?")
+    .get(id) as { logo_path: string | null } | null;
+
+  if (!project?.logo_path || !existsSync(project.logo_path)) {
+    return c.json({ error: "No logo" }, 404);
+  }
+
+  const ext = extname(project.logo_path).toLowerCase();
+  const mime = MIME_TYPES[ext] || "application/octet-stream";
+  const file = Bun.file(project.logo_path);
+
+  return new Response(file, {
+    headers: {
+      "Content-Type": mime,
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
 });
 
 // Bulk per-project cost summary — must be before /:id

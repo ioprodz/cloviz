@@ -58,6 +58,9 @@ export function runQuickIndex(ctx: PipelineContext) {
   // 7. Register all session JSONL paths (without parsing content)
   registerSessionJsonlPaths(ctx);
 
+  // 8. Scan project directories for logos
+  scanProjectLogos(db);
+
   const elapsed = Date.now() - start;
   console.log(`[pipeline] Quick index completed in ${elapsed}ms`);
 }
@@ -173,6 +176,51 @@ function registerSessionJsonlPaths(ctx: PipelineContext) {
   });
 
   tx();
+}
+
+// Logo candidates in priority order (relative to project root)
+const LOGO_CANDIDATES = [
+  "logo.svg", "logo.png", "logo.jpg", "logo.webp",
+  "icon.svg", "icon.png",
+  "favicon.svg", "favicon.png", "favicon.ico",
+  "public/logo.svg", "public/logo.png",
+  "public/favicon.svg", "public/favicon.png", "public/favicon.ico",
+  "public/favicon-32x32.png",
+  "static/logo.svg", "static/logo.png",
+  "static/favicon.svg", "static/favicon.png", "static/favicon.ico",
+  "static/favicon-32x32.png",
+  "app/static/logo.svg", "app/static/logo.png",
+  "app/static/favicon.svg", "app/static/favicon.png", "app/static/favicon.ico",
+  "app/static/favicon-32x32.png",
+  "src/logo.svg", "src/logo.png",
+  "src/assets/logo.svg", "src/assets/logo.png",
+  "assets/logo.svg", "assets/logo.png",
+  ".github/logo.svg", ".github/logo.png",
+];
+
+function scanProjectLogos(db: Database) {
+  const projects = db
+    .prepare("SELECT id, path FROM projects WHERE path IS NOT NULL AND path != ''")
+    .all() as { id: number; path: string }[];
+
+  const updateStmt = db.prepare(
+    "UPDATE projects SET logo_path = ? WHERE id = ?"
+  );
+
+  for (const project of projects) {
+    if (!existsSync(project.path)) continue;
+
+    let found: string | null = null;
+    for (const candidate of LOGO_CANDIDATES) {
+      const fullPath = join(project.path, candidate);
+      if (existsSync(fullPath)) {
+        found = fullPath;
+        break;
+      }
+    }
+
+    updateStmt.run(found, project.id);
+  }
 }
 
 // Handle individual file change events from the watcher

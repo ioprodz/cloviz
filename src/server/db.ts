@@ -168,9 +168,14 @@ function migrate(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_session_commits_commit ON session_commits(commit_id);
   `);
 
-  // Add last_indexed_commit to projects (safe to call repeatedly)
+  // Add last_indexed_commit and logo_path to projects (safe to call repeatedly)
   try {
     db.exec("ALTER TABLE projects ADD COLUMN last_indexed_commit TEXT");
+  } catch {
+    // Column already exists
+  }
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN logo_path TEXT");
   } catch {
     // Column already exists
   }

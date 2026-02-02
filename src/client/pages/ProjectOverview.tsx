@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useApi } from "../hooks/useApi";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { formatCost } from "../utils/format";
@@ -14,6 +15,62 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+const API_BASE =
+  typeof window !== "undefined"
+    ? `http://${window.location.hostname}:3456`
+    : "http://localhost:3456";
+
+const INITIALS_COLORS = [
+  "from-amber-600 to-orange-700",
+  "from-blue-600 to-indigo-700",
+  "from-emerald-600 to-teal-700",
+  "from-purple-600 to-violet-700",
+  "from-rose-600 to-pink-700",
+  "from-cyan-600 to-sky-700",
+  "from-lime-600 to-green-700",
+  "from-fuchsia-600 to-purple-700",
+];
+
+function getInitials(name: string): string {
+  const parts = name.replace(/[-_]/g, " ").split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function getColorIndex(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % INITIALS_COLORS.length;
+}
+
+function ProjectLogo({ project }: { project: Project }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (project.logo_path && !imgFailed) {
+    return (
+      <img
+        src={`${API_BASE}/api/projects/logo/${project.id}`}
+        alt=""
+        className="w-9 h-9 rounded-lg object-contain bg-surface-lighter flex-shrink-0"
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
+  const initials = getInitials(project.display_name);
+  const color = INITIALS_COLORS[getColorIndex(project.display_name)];
+
+  return (
+    <div
+      className={`w-9 h-9 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}
+    >
+      <span className="text-xs font-bold text-white/90">{initials}</span>
+    </div>
+  );
+}
+
 interface Project {
   id: number;
   path: string;
@@ -23,6 +80,7 @@ interface Project {
   first_session?: string;
   last_session?: string;
   branches?: string;
+  logo_path?: string | null;
 }
 
 interface CostWithSavings {
@@ -123,46 +181,51 @@ export default function ProjectOverview() {
               to={`/projects/${p.id}`}
               className="bg-surface-light rounded-xl p-5 border border-border hover:border-primary/50 transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <div className="text-sm font-medium text-gray-200 mb-1">
-                  {p.display_name}
-                </div>
-                {projectCost && projectCost.totalCost > 0 && (
-                  <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                    ~{formatCost(projectCost.totalCost)}
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-gray-500 truncate mb-3">
-                {p.path}
-              </div>
-              <div className="flex items-center gap-4 text-xs text-gray-400">
-                <span>{p.session_count} sessions</span>
-                <span>{p.message_count.toLocaleString()} msgs</span>
-              </div>
-              {branchList.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {branchList.slice(0, 5).map((b) => (
-                    <span
-                      key={b}
-                      className="bg-surface-lighter px-1.5 py-0.5 rounded text-[10px] text-gray-500"
-                    >
-                      {b}
-                    </span>
-                  ))}
-                  {branchList.length > 5 && (
-                    <span className="text-[10px] text-gray-600">
-                      +{branchList.length - 5}
-                    </span>
+              <div className="flex items-start gap-3">
+                <ProjectLogo project={p} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between">
+                    <div className="text-sm font-medium text-gray-200 mb-1 truncate">
+                      {p.display_name}
+                    </div>
+                    {projectCost && projectCost.totalCost > 0 && (
+                      <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded flex-shrink-0 ml-2">
+                        ~{formatCost(projectCost.totalCost)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate mb-3">
+                    {p.path}
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-gray-400">
+                    <span>{p.session_count} sessions</span>
+                    <span>{p.message_count.toLocaleString()} msgs</span>
+                  </div>
+                  {branchList.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {branchList.slice(0, 5).map((b) => (
+                        <span
+                          key={b}
+                          className="bg-surface-lighter px-1.5 py-0.5 rounded text-[10px] text-gray-500"
+                        >
+                          {b}
+                        </span>
+                      ))}
+                      {branchList.length > 5 && (
+                        <span className="text-[10px] text-gray-600">
+                          +{branchList.length - 5}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {p.last_session && (
+                    <div className="text-[10px] text-gray-600 mt-2">
+                      Last active:{" "}
+                      {formatDistanceToNow(new Date(p.last_session), { addSuffix: true })}
+                    </div>
                   )}
                 </div>
-              )}
-              {p.last_session && (
-                <div className="text-[10px] text-gray-600 mt-2">
-                  Last active:{" "}
-                  {formatDistanceToNow(new Date(p.last_session), { addSuffix: true })}
-                </div>
-              )}
+              </div>
             </Link>
           );
         })}
