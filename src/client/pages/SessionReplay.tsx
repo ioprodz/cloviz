@@ -1,11 +1,13 @@
 import { useParams, Link } from "react-router-dom";
-import { useApi } from "../hooks/useApi";
+import { useApi, apiFetch } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 import ChatMessage from "../components/ChatMessage";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import SplitPane from "../components/SplitPane";
 import FileTree from "../components/FileTree";
 import DiffViewer from "../components/DiffViewer";
+import MarkdownView from "../components/MarkdownView";
+import SessionTodos from "../components/SessionTodos";
 import { formatCost } from "../utils/format";
 import { useState, useRef, useCallback } from "react";
 
@@ -68,6 +70,8 @@ export default function SessionReplay() {
   const [page, setPage] = useState(0);
   const [selectedFile, setSelectedFile] = useState<string>();
   const [diffState, setDiffState] = useState<DiffState | null>(null);
+  const [leftTab, setLeftTab] = useState<"files" | "todos">("files");
+  const [planView, setPlanView] = useState<{ filename: string; content: string } | null>(null);
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const limit = 100;
 
@@ -94,6 +98,19 @@ export default function SessionReplay() {
   const handleFileSelect = useCallback(
     (path: string, messageId: number) => {
       setSelectedFile(path);
+
+      // If it's a plan file, fetch and show content in the right pane
+      const planMatch = path.match(/\.claude\/plans\/([^/]+\.md)$/);
+      if (planMatch) {
+        apiFetch<{ filename: string; content: string }>(
+          `/api/plans/${encodeURIComponent(planMatch[1])}`
+        )
+          .then((plan) => setPlanView({ filename: plan.filename, content: plan.content }))
+          .catch(() => setPlanView(null));
+        return;
+      }
+
+      setPlanView(null);
       // Find the message element and scroll to it
       const el = messageRefs.current.get(messageId);
       if (el) {
@@ -279,21 +296,69 @@ export default function SessionReplay() {
     </div>
   );
 
-  const fileTreeContent = (
-    <div className="bg-surface-light border-r border-border h-full">
-      <FileTree
-        files={files}
-        onFileSelect={handleFileSelect}
-        onViewDiff={handleViewDiff}
-        selectedFile={selectedFile}
-      />
+  const planViewContent = planView && (
+    <div className="p-4 space-y-4">
+      <div className="bg-surface-light rounded-xl border border-border overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <h3 className="text-sm font-medium text-gray-200">
+            {planView.filename.replace(".md", "")}
+          </h3>
+          <button
+            onClick={() => { setPlanView(null); setSelectedFile(undefined); }}
+            className="text-gray-500 hover:text-gray-300 text-lg leading-none"
+          >
+            &times;
+          </button>
+        </div>
+        <div className="p-5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 180px)" }}>
+          <MarkdownView content={planView.content} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const LEFT_TABS = [
+    { key: "files" as const, label: "Files" },
+    { key: "todos" as const, label: "Todos" },
+  ];
+
+  const leftPanelContent = (
+    <div className="bg-surface-light border-r border-border h-full flex flex-col">
+      {/* Tab bar */}
+      <div className="flex border-b border-border">
+        {LEFT_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setLeftTab(tab.key)}
+            className={`flex-1 px-2 py-2 text-xs text-center transition-colors ${
+              leftTab === tab.key
+                ? "text-primary border-b-2 border-primary font-medium"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {leftTab === "files" && (
+          <FileTree
+            files={files}
+            onFileSelect={handleFileSelect}
+            onViewDiff={handleViewDiff}
+            selectedFile={selectedFile}
+          />
+        )}
+        {leftTab === "todos" && <SessionTodos sessionId={id!} />}
+      </div>
     </div>
   );
 
   return (
     <>
       <div style={{ height: "calc(100vh - 80px)" }}>
-        <SplitPane left={fileTreeContent} right={conversationContent} />
+        <SplitPane left={leftPanelContent} right={planViewContent || conversationContent} />
       </div>
       {diffState && (
         <DiffViewer

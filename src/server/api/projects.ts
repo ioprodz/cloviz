@@ -300,4 +300,93 @@ app.get("/:id/analytics", (c) => {
   });
 });
 
+// Get plans linked to a project (via tool_uses across all project sessions)
+app.get("/:id/plans", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(id);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const toolUseRows = db
+    .prepare(
+      `SELECT DISTINCT tu.input_json, tu.session_id
+       FROM tool_uses tu JOIN sessions s ON tu.session_id = s.id
+       WHERE s.project_id = ? AND tu.tool_name IN ('Write','Edit','MultiEdit','Read')
+       AND tu.input_json LIKE '%/.claude/plans/%.md%'`
+    )
+    .all(id) as { input_json: string; session_id: string }[];
+
+  // Extract filenames and track which sessions reference each plan
+  const planSessionMap = new Map<string, Set<string>>();
+  const planPathRegex = /\.claude\/plans\/([^/]+\.md)/;
+  for (const row of toolUseRows) {
+    try {
+      const input = JSON.parse(row.input_json || "{}");
+      const pathValue = input.file_path || input.path || "";
+      const match = pathValue.match(planPathRegex);
+      if (match) {
+        const filename = match[1];
+        if (!planSessionMap.has(filename)) {
+          planSessionMap.set(filename, new Set());
+        }
+        planSessionMap.get(filename)!.add(row.session_id);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  if (planSessionMap.size === 0) {
+    return c.json({ plans: [] });
+  }
+
+  const filenames = [...planSessionMap.keys()];
+  const placeholders = filenames.map(() => "?").join(",");
+  const planRows = db
+    .prepare(
+      `SELECT id, filename, content, mtime FROM plans
+       WHERE filename IN (${placeholders}) ORDER BY mtime DESC`
+    )
+    .all(...filenames) as { id: number; filename: string; content: string; mtime: number }[];
+
+  const plans = planRows.map((p) => ({
+    ...p,
+    session_ids: [...(planSessionMap.get(p.filename) ?? [])],
+  }));
+
+  return c.json({ plans });
+});
+
+// Get todos for a project (aggregated across all project sessions)
+app.get("/:id/todos", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  const project = db.prepare("SELECT id FROM projects WHERE id = ?").get(id);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const todos = db
+    .prepare(
+      `SELECT t.*, s.summary as session_summary, s.slug as session_slug
+       FROM todos t JOIN sessions s ON t.session_id = s.id
+       WHERE s.project_id = ? ORDER BY t.id DESC`
+    )
+    .all(id);
+
+  const statusCounts = db
+    .prepare(
+      `SELECT t.status, COUNT(*) as count FROM todos t
+       JOIN sessions s ON t.session_id = s.id WHERE s.project_id = ?
+       GROUP BY t.status`
+    )
+    .all(id);
+
+  return c.json({ todos, statusCounts });
+});
+
 export default app;

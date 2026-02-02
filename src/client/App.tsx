@@ -7,15 +7,11 @@ import ProjectDetail from "./pages/ProjectDetail";
 import SessionReplay from "./pages/SessionReplay";
 import Analytics from "./pages/Analytics";
 import Search from "./pages/Search";
-import Plans from "./pages/Plans";
-import Todos from "./pages/Todos";
 
 const NAV_ITEMS = [
   { path: "/", label: "Projects", icon: "P" },
   { path: "/analytics", label: "Analytics", icon: "A" },
   { path: "/search", label: "Search", icon: "Q" },
-  { path: "/plans", label: "Plans", icon: "D" },
-  { path: "/todos", label: "Todos", icon: "L" },
 ];
 
 function NavBar() {
@@ -112,8 +108,6 @@ export default function App() {
             <Route path="/sessions/:id" element={<SessionReplay />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/search" element={<Search />} />
-            <Route path="/plans" element={<Plans />} />
-            <Route path="/todos" element={<Todos />} />
           </Routes>
         </main>
       </div>

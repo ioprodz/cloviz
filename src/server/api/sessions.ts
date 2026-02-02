@@ -221,4 +221,56 @@ app.get("/:id/files", (c) => {
   return c.json({ files });
 });
 
+// Get plans linked to a session (via tool_uses referencing .claude/plans/*.md files)
+app.get("/:id/plans", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+
+  const session = db
+    .prepare("SELECT id FROM sessions WHERE id = ?")
+    .get(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  // Find distinct plan filenames from tool_uses for this session
+  const toolUseRows = db
+    .prepare(
+      `SELECT DISTINCT input_json FROM tool_uses
+       WHERE session_id = ? AND tool_name IN ('Write', 'Edit', 'MultiEdit', 'Read')
+       AND input_json LIKE '%/.claude/plans/%.md%'`
+    )
+    .all(id) as { input_json: string }[];
+
+  // Extract filenames via regex
+  const planFilenames = new Set<string>();
+  const planPathRegex = /\.claude\/plans\/([^/]+\.md)/;
+  for (const row of toolUseRows) {
+    try {
+      const input = JSON.parse(row.input_json || "{}");
+      const pathValue = input.file_path || input.path || "";
+      const match = pathValue.match(planPathRegex);
+      if (match) {
+        planFilenames.add(match[1]);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  if (planFilenames.size === 0) {
+    return c.json({ plans: [] });
+  }
+
+  const placeholders = [...planFilenames].map(() => "?").join(",");
+  const plans = db
+    .prepare(
+      `SELECT id, filename, content, mtime FROM plans
+       WHERE filename IN (${placeholders}) ORDER BY mtime DESC`
+    )
+    .all(...planFilenames);
+
+  return c.json({ plans });
+});
+
 export default app;

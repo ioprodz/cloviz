@@ -27,11 +27,19 @@ app.get("/", (c) => {
     )
     .all(...params);
 
+  let countWhere = "1=1";
+  const countParams: string[] = [];
+
+  if (sessionId) {
+    countWhere += " AND session_id = ?";
+    countParams.push(sessionId);
+  }
+
   const statusCounts = db
     .prepare(
-      `SELECT status, COUNT(*) as count FROM todos GROUP BY status`
+      `SELECT status, COUNT(*) as count FROM todos WHERE ${countWhere} GROUP BY status`
     )
-    .all();
+    .all(...countParams);
 
   return c.json({ todos, statusCounts });
 });
