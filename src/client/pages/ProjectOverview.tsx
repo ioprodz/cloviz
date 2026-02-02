@@ -35,6 +35,16 @@ function getColorIndex(name: string): number {
   return Math.abs(hash) % INITIALS_COLORS.length;
 }
 
+function extractRepoName(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Return path without leading slash, e.g. "user/repo"
+    return parsed.pathname.replace(/^\//, "");
+  } catch {
+    return url;
+  }
+}
+
 function ProjectLogo({ project }: { project: Project }) {
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -71,6 +81,7 @@ interface Project {
   last_session?: string;
   branches?: string;
   logo_path?: string | null;
+  remote_url?: string | null;
 }
 
 interface CostWithSavings {
@@ -137,9 +148,24 @@ export default function ProjectOverview() {
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 truncate mb-3">
+                  <div className="text-xs text-gray-500 truncate">
                     {p.path}
                   </div>
+                  {p.remote_url && (
+                    <a
+                      href={p.remote_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[10px] text-primary/70 hover:text-primary truncate inline-flex items-center gap-1 mb-3"
+                    >
+                      {extractRepoName(p.remote_url)}
+                      <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                  {!p.remote_url && <div className="mb-3" />}
                   <div className="flex items-center gap-4 text-xs text-gray-400">
                     <span>{p.session_count} sessions</span>
                     <span>{p.message_count.toLocaleString()} msgs</span>

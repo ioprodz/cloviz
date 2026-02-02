@@ -179,6 +179,11 @@ function migrate(db: Database) {
   } catch {
     // Column already exists
   }
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN remote_url TEXT");
+  } catch {
+    // Column already exists
+  }
 
   // FTS5 virtual tables
   db.exec(`

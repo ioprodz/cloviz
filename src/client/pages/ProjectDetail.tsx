@@ -54,6 +54,7 @@ interface ProjectAnalytics {
     path: string;
     display_name: string;
     logo_path?: string | null;
+    remote_url?: string | null;
   };
   costs: CostWithSavings;
   sessionCount: number;
@@ -179,6 +180,26 @@ export default function ProjectDetail() {
               </Link>
               <h2 className="text-base font-semibold leading-tight truncate">{project.display_name}</h2>
               <div className="text-[10px] text-gray-500 truncate">{project.path}</div>
+              {project.remote_url && (
+                <a
+                  href={project.remote_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-primary/70 hover:text-primary truncate inline-flex items-center gap-1"
+                >
+                  {(() => {
+                    try {
+                      const u = new URL(project.remote_url);
+                      return u.host + u.pathname;
+                    } catch {
+                      return project.remote_url;
+                    }
+                  })()}
+                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              )}
             </div>
           </div>
 

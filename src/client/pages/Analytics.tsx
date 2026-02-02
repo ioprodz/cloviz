@@ -38,20 +38,47 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+interface Project {
+  id: number;
+  display_name: string;
+}
+
 export default function Analytics() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab") as TabKey | null;
+  const projectParam = searchParams.get("project_id") || "";
   const [activeTab, setActiveTab] = useState<TabKey>(
     tabParam && TABS.some((t) => t.key === tabParam) ? tabParam : "costs"
   );
+  const [projectId, setProjectId] = useState(projectParam);
+
+  const { data: projectsData } = useApi<{ projects: Project[] }>(
+    "/api/projects"
+  );
 
   useEffect(() => {
-    setSearchParams({ tab: activeTab }, { replace: true });
-  }, [activeTab, setSearchParams]);
+    const params: Record<string, string> = { tab: activeTab };
+    if (projectId) params.project_id = projectId;
+    setSearchParams(params, { replace: true });
+  }, [activeTab, projectId, setSearchParams]);
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Analytics</h2>
+      <div className="flex items-center gap-4">
+        <h2 className="text-lg font-semibold">Analytics</h2>
+        <select
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          className="bg-surface-light border border-border rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">All Projects</option>
+          {projectsData?.projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.display_name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Tab bar */}
       <div className="flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
@@ -71,11 +98,11 @@ export default function Analytics() {
       </div>
 
       {/* Tab content */}
-      {activeTab === "costs" && <CostsTab />}
-      {activeTab === "usage" && <UsageTab />}
-      {activeTab === "tools" && <ToolsTab />}
-      {activeTab === "patterns" && <PatternsTab />}
-      {activeTab === "activity" && <ActivityTab />}
+      {activeTab === "costs" && <CostsTab projectId={projectId} />}
+      {activeTab === "usage" && <UsageTab projectId={projectId} />}
+      {activeTab === "tools" && <ToolsTab projectId={projectId} />}
+      {activeTab === "patterns" && <PatternsTab projectId={projectId} />}
+      {activeTab === "activity" && <ActivityTab projectId={projectId} />}
     </div>
   );
 }
@@ -114,8 +141,11 @@ interface CostData {
   };
 }
 
-function CostsTab() {
-  const { data, loading } = useApi<CostData>("/api/analytics/costs");
+function CostsTab({ projectId }: { projectId: string }) {
+  const url = projectId
+    ? `/api/analytics/costs?project_id=${projectId}`
+    : "/api/analytics/costs";
+  const { data, loading } = useApi<CostData>(url, [projectId]);
 
   if (loading)
     return (
@@ -394,8 +424,11 @@ interface UsageData {
   perModelCosts: Record<string, CostWithSavings>;
 }
 
-function UsageTab() {
-  const { data, loading } = useApi<UsageData>("/api/analytics/usage");
+function UsageTab({ projectId }: { projectId: string }) {
+  const url = projectId
+    ? `/api/analytics/usage?project_id=${projectId}`
+    : "/api/analytics/usage";
+  const { data, loading } = useApi<UsageData>(url, [projectId]);
 
   if (loading)
     return (
@@ -663,8 +696,11 @@ function TreemapContent(props: any) {
   );
 }
 
-function ToolsTab() {
-  const { data, loading } = useApi<ToolData>("/api/analytics/tools");
+function ToolsTab({ projectId }: { projectId: string }) {
+  const url = projectId
+    ? `/api/analytics/tools?project_id=${projectId}`
+    : "/api/analytics/tools";
+  const { data, loading } = useApi<ToolData>(url, [projectId]);
   const [chartView, setChartView] = useState<"bar" | "treemap">("bar");
 
   if (loading)
@@ -860,8 +896,11 @@ interface HourlyData {
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-function PatternsTab() {
-  const { data, loading } = useApi<HourlyData>("/api/analytics/hourly");
+function PatternsTab({ projectId }: { projectId: string }) {
+  const url = projectId
+    ? `/api/analytics/hourly?project_id=${projectId}`
+    : "/api/analytics/hourly";
+  const { data, loading } = useApi<HourlyData>(url, [projectId]);
 
   if (loading)
     return (
@@ -1030,8 +1069,11 @@ interface DashboardData {
   }[];
 }
 
-function ActivityTab() {
-  const { data, loading, refetch } = useApi<DashboardData>("/api/dashboard");
+function ActivityTab({ projectId }: { projectId: string }) {
+  const url = projectId
+    ? `/api/dashboard?project_id=${projectId}`
+    : "/api/dashboard";
+  const { data, loading, refetch } = useApi<DashboardData>(url, [projectId]);
 
   useWebSocket("history:appended", refetch);
 

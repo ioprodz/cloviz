@@ -340,6 +340,45 @@ export async function scanProjectCommits(
 }
 
 /**
+ * Get the remote URL for the 'origin' remote of a git repository.
+ */
+export async function getRemoteUrl(projectPath: string): Promise<string | null> {
+  const output = await gitExec(projectPath, ["remote", "get-url", "origin"]);
+  return output ? output.trim() : null;
+}
+
+/**
+ * Convert a git remote URL (SSH or HTTPS) to a web URL.
+ * Handles:
+ *   git@host:user/repo.git       → https://host/user/repo
+ *   ssh://git@host/user/repo.git → https://host/user/repo
+ *   https://host/user/repo.git   → https://host/user/repo
+ */
+export function parseRemoteToWebUrl(remoteUrl: string): string | null {
+  let url = remoteUrl.trim();
+
+  // SSH format: git@host:user/repo.git
+  const sshMatch = url.match(/^[\w-]+@([^:]+):(.+?)(?:\.git)?$/);
+  if (sshMatch) {
+    return `https://${sshMatch[1]}/${sshMatch[2]}`;
+  }
+
+  // ssh:// prefix: ssh://git@host/user/repo.git
+  const sshProtoMatch = url.match(/^ssh:\/\/[\w-]+@([^/]+)\/(.+?)(?:\.git)?$/);
+  if (sshProtoMatch) {
+    return `https://${sshProtoMatch[1]}/${sshProtoMatch[2]}`;
+  }
+
+  // HTTPS/HTTP format: https://host/user/repo.git
+  const httpsMatch = url.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?$/);
+  if (httpsMatch) {
+    return `https://${httpsMatch[1]}/${httpsMatch[2]}`;
+  }
+
+  return null;
+}
+
+/**
  * Scan all projects for git commits.
  */
 export async function scanAllProjectCommits(db: Database) {

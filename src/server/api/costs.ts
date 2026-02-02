@@ -6,20 +6,27 @@ const app = new Hono();
 
 app.get("/", (c) => {
   const db = getDb();
+  const projectId = c.req.query("project_id");
+
+  const projectJoin = projectId ? "JOIN sessions s ON m.session_id = s.id" : "";
+  const projectWhere = projectId ? "AND s.project_id = ?" : "";
+  const projectParams = projectId ? [projectId] : [];
 
   // Per-model totals from messages table
   const modelRows = db
     .prepare(
-      `SELECT model,
-              SUM(input_tokens) as input_tokens,
-              SUM(output_tokens) as output_tokens,
-              SUM(cache_creation_tokens) as cache_creation_tokens,
-              SUM(cache_read_tokens) as cache_read_tokens
-       FROM messages
-       WHERE model IS NOT NULL AND model != ''
-       GROUP BY model`
+      `SELECT m.model,
+              SUM(m.input_tokens) as input_tokens,
+              SUM(m.output_tokens) as output_tokens,
+              SUM(m.cache_creation_tokens) as cache_creation_tokens,
+              SUM(m.cache_read_tokens) as cache_read_tokens
+       FROM messages m
+       ${projectJoin}
+       WHERE m.model IS NOT NULL AND m.model != ''
+       ${projectWhere}
+       GROUP BY m.model`
     )
-    .all() as {
+    .all(...projectParams) as {
     model: string;
     input_tokens: number;
     output_tokens: number;
@@ -47,17 +54,19 @@ app.get("/", (c) => {
   // Daily costs from messages grouped by date + model
   const dailyRows = db
     .prepare(
-      `SELECT DATE(timestamp) as date, model,
-              SUM(input_tokens) as input_tokens,
-              SUM(output_tokens) as output_tokens,
-              SUM(cache_creation_tokens) as cache_creation_tokens,
-              SUM(cache_read_tokens) as cache_read_tokens
-       FROM messages
-       WHERE timestamp IS NOT NULL AND model IS NOT NULL AND model != ''
-       GROUP BY date, model
+      `SELECT DATE(m.timestamp) as date, m.model,
+              SUM(m.input_tokens) as input_tokens,
+              SUM(m.output_tokens) as output_tokens,
+              SUM(m.cache_creation_tokens) as cache_creation_tokens,
+              SUM(m.cache_read_tokens) as cache_read_tokens
+       FROM messages m
+       ${projectJoin}
+       WHERE m.timestamp IS NOT NULL AND m.model IS NOT NULL AND m.model != ''
+       ${projectWhere}
+       GROUP BY date, m.model
        ORDER BY date`
     )
-    .all() as {
+    .all(...projectParams) as {
     date: string;
     model: string;
     input_tokens: number;

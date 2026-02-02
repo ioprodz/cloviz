@@ -7,22 +7,76 @@ const app = new Hono();
 // Token usage and cost analytics
 app.get("/usage", (c) => {
   const db = getDb();
+  const projectId = c.req.query("project_id");
 
-  const modelUsageRaw = db
-    .prepare("SELECT value FROM stats_cache WHERE key = 'modelUsage'")
-    .get() as { value: string } | null;
+  let modelUsage: Record<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number }>;
+  let dailyTokens: { date: string; tokensByModel: Record<string, number> }[];
 
-  const modelUsage = modelUsageRaw ? JSON.parse(modelUsageRaw.value) : {};
+  if (projectId) {
+    // Compute from messages table with session join
+    const modelRows = db
+      .prepare(
+        `SELECT m.model,
+                SUM(m.input_tokens) as input_tokens,
+                SUM(m.output_tokens) as output_tokens,
+                SUM(m.cache_read_tokens) as cache_read_tokens,
+                SUM(m.cache_creation_tokens) as cache_creation_tokens
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.project_id = ? AND m.model IS NOT NULL AND m.model != ''
+         GROUP BY m.model`
+      )
+      .all(projectId) as { model: string; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_creation_tokens: number }[];
 
-  const dailyTokens = db
-    .prepare(
-      "SELECT date, tokens_by_model FROM daily_stats WHERE tokens_by_model != '{}' ORDER BY date"
-    )
-    .all()
-    .map((row: any) => ({
-      date: row.date,
-      tokensByModel: JSON.parse(row.tokens_by_model),
-    }));
+    modelUsage = {};
+    for (const row of modelRows) {
+      modelUsage[row.model] = {
+        inputTokens: row.input_tokens ?? 0,
+        outputTokens: row.output_tokens ?? 0,
+        cacheReadInputTokens: row.cache_read_tokens ?? 0,
+        cacheCreationInputTokens: row.cache_creation_tokens ?? 0,
+      };
+    }
+
+    // Daily tokens by model
+    const dailyRows = db
+      .prepare(
+        `SELECT DATE(m.timestamp) as date, m.model,
+                SUM(m.input_tokens + m.output_tokens + m.cache_read_tokens + m.cache_creation_tokens) as total_tokens
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.project_id = ? AND m.timestamp IS NOT NULL AND m.model IS NOT NULL AND m.model != ''
+         GROUP BY date, m.model
+         ORDER BY date`
+      )
+      .all(projectId) as { date: string; model: string; total_tokens: number }[];
+
+    const dailyMap = new Map<string, Record<string, number>>();
+    for (const row of dailyRows) {
+      if (!dailyMap.has(row.date)) dailyMap.set(row.date, {});
+      dailyMap.get(row.date)![row.model] = row.total_tokens ?? 0;
+    }
+    dailyTokens = [...dailyMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, tokensByModel]) => ({ date, tokensByModel }));
+  } else {
+    // Fast path: use stats_cache
+    const modelUsageRaw = db
+      .prepare("SELECT value FROM stats_cache WHERE key = 'modelUsage'")
+      .get() as { value: string } | null;
+
+    modelUsage = modelUsageRaw ? JSON.parse(modelUsageRaw.value) : {};
+
+    dailyTokens = db
+      .prepare(
+        "SELECT date, tokens_by_model FROM daily_stats WHERE tokens_by_model != '{}' ORDER BY date"
+      )
+      .all()
+      .map((row: any) => ({
+        date: row.date,
+        tokensByModel: JSON.parse(row.tokens_by_model),
+      }));
+  }
 
   // Compute totals from model usage
   let totalInput = 0;
@@ -80,39 +134,50 @@ app.get("/usage", (c) => {
 // Tool usage analytics
 app.get("/tools", (c) => {
   const db = getDb();
+  const projectId = c.req.query("project_id");
+
+  const projectJoin = projectId ? "JOIN sessions s ON t.session_id = s.id" : "";
+  const projectWhere = projectId ? "AND s.project_id = ?" : "";
+  const projectParams = projectId ? [projectId] : [];
 
   const topTools = db
     .prepare(
-      `SELECT tool_name, COUNT(*) as count
-       FROM tool_uses
-       GROUP BY tool_name
+      `SELECT t.tool_name, COUNT(*) as count
+       FROM tool_uses t
+       ${projectJoin}
+       WHERE 1=1 ${projectWhere}
+       GROUP BY t.tool_name
        ORDER BY count DESC
        LIMIT 20`
     )
-    .all();
+    .all(...projectParams);
 
   // Tool usage by session (top 10 sessions by tool use)
+  // This query always joins sessions, just conditionally filter by project
+  const sessionProjectWhere = projectId ? "WHERE s.project_id = ?" : "";
   const toolsBySession = db
     .prepare(
       `SELECT t.session_id, s.slug, s.first_prompt, COUNT(*) as tool_count
        FROM tool_uses t
        LEFT JOIN sessions s ON t.session_id = s.id
+       ${sessionProjectWhere}
        GROUP BY t.session_id
        ORDER BY tool_count DESC
        LIMIT 10`
     )
-    .all();
+    .all(...projectParams);
 
   // Daily tool usage
   const dailyTools = db
     .prepare(
-      `SELECT DATE(timestamp) as date, tool_name, COUNT(*) as count
-       FROM tool_uses
-       WHERE timestamp IS NOT NULL
-       GROUP BY date, tool_name
+      `SELECT DATE(t.timestamp) as date, t.tool_name, COUNT(*) as count
+       FROM tool_uses t
+       ${projectJoin}
+       WHERE t.timestamp IS NOT NULL ${projectWhere}
+       GROUP BY date, t.tool_name
        ORDER BY date`
     )
-    .all();
+    .all(...projectParams);
 
   return c.json({ topTools, toolsBySession, dailyTools });
 });
@@ -120,38 +185,92 @@ app.get("/tools", (c) => {
 // Hourly activity patterns
 app.get("/hourly", (c) => {
   const db = getDb();
+  const projectId = c.req.query("project_id");
 
-  const hourCountsRaw = db
-    .prepare("SELECT value FROM stats_cache WHERE key = 'hourCounts'")
-    .get() as { value: string } | null;
+  let hourCounts: Record<string, number>;
+  let dayOfWeek: any[];
+  let heatmap: any[];
 
-  const hourCounts = hourCountsRaw ? JSON.parse(hourCountsRaw.value) : {};
+  if (projectId) {
+    // Compute hourCounts from history_entries joined with sessions
+    const hourRows = db
+      .prepare(
+        `SELECT
+          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          COUNT(*) as count
+         FROM history_entries h
+         JOIN sessions s ON h.session_id = s.id
+         WHERE h.timestamp > 0 AND s.project_id = ?
+         GROUP BY hour`
+      )
+      .all(projectId) as { hour: number; count: number }[];
 
-  // Day of week distribution from history
-  const dayOfWeek = db
-    .prepare(
-      `SELECT
-        CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
-        COUNT(*) as count
-       FROM history_entries
-       WHERE timestamp > 0
-       GROUP BY dow
-       ORDER BY dow`
-    )
-    .all();
+    hourCounts = {};
+    for (const row of hourRows) {
+      hourCounts[String(row.hour)] = row.count;
+    }
 
-  // Hour × day heatmap from history
-  const heatmap = db
-    .prepare(
-      `SELECT
-        CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
-        CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
-        COUNT(*) as count
-       FROM history_entries
-       WHERE timestamp > 0
-       GROUP BY dow, hour`
-    )
-    .all();
+    // Day of week distribution
+    dayOfWeek = db
+      .prepare(
+        `SELECT
+          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          COUNT(*) as count
+         FROM history_entries h
+         JOIN sessions s ON h.session_id = s.id
+         WHERE h.timestamp > 0 AND s.project_id = ?
+         GROUP BY dow
+         ORDER BY dow`
+      )
+      .all(projectId);
+
+    // Hour × day heatmap
+    heatmap = db
+      .prepare(
+        `SELECT
+          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          COUNT(*) as count
+         FROM history_entries h
+         JOIN sessions s ON h.session_id = s.id
+         WHERE h.timestamp > 0 AND s.project_id = ?
+         GROUP BY dow, hour`
+      )
+      .all(projectId);
+  } else {
+    // Fast path: use stats_cache for hourCounts
+    const hourCountsRaw = db
+      .prepare("SELECT value FROM stats_cache WHERE key = 'hourCounts'")
+      .get() as { value: string } | null;
+
+    hourCounts = hourCountsRaw ? JSON.parse(hourCountsRaw.value) : {};
+
+    // Day of week distribution from history
+    dayOfWeek = db
+      .prepare(
+        `SELECT
+          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          COUNT(*) as count
+         FROM history_entries
+         WHERE timestamp > 0
+         GROUP BY dow
+         ORDER BY dow`
+      )
+      .all();
+
+    // Hour × day heatmap from history
+    heatmap = db
+      .prepare(
+        `SELECT
+          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          COUNT(*) as count
+         FROM history_entries
+         WHERE timestamp > 0
+         GROUP BY dow, hour`
+      )
+      .all();
+  }
 
   return c.json({ hourCounts, dayOfWeek, heatmap });
 });
