@@ -4,16 +4,6 @@ import { useApi } from "../hooks/useApi";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { formatCost } from "../utils/format";
 import { formatDistanceToNow } from "date-fns";
-import { TOOLTIP_STYLE, AXIS_STYLE, GRID_STYLE } from "../utils/chart-theme";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -116,58 +106,11 @@ export default function ProjectOverview() {
   const projects = data?.projects ?? [];
   const costs = costData || {};
 
-  // Top 10 projects by cost for bar chart
-  const costChartData = projects
-    .map((p) => ({
-      name: p.display_name,
-      cost: costs[p.id]?.totalCost || 0,
-    }))
-    .filter((d) => d.cost > 0)
-    .sort((a, b) => b.cost - a.cost)
-    .slice(0, 10);
-
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold">
         Projects ({projects.length})
       </h2>
-
-      {/* Cost by Project bar chart */}
-      {costChartData.length > 0 && (
-        <div className="bg-surface-light rounded-xl p-5 border border-border">
-          <h3 className="text-sm font-medium text-gray-400 mb-4">
-            Cost by Project
-          </h3>
-          <ResponsiveContainer
-            width="100%"
-            height={Math.max(200, costChartData.length * 32)}
-          >
-            <BarChart
-              data={costChartData}
-              layout="vertical"
-              margin={{ left: 120 }}
-            >
-              <CartesianGrid {...GRID_STYLE} />
-              <XAxis
-                type="number"
-                tick={AXIS_STYLE}
-                tickFormatter={(v) => formatCost(v)}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fontSize: 11, fill: "#9ca3af" }}
-                width={120}
-              />
-              <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                formatter={(value: number) => [formatCost(value), "Cost"]}
-              />
-              <Bar dataKey="cost" fill="#d97706" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {projects.map((p) => {

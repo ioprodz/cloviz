@@ -1,13 +1,42 @@
 import { useParams, Link } from "react-router-dom";
 import { useState } from "react";
 import { useApi } from "../hooks/useApi";
-import StatsCard from "../components/StatsCard";
 import SessionCardGrid, {
   type EnrichedSession,
 } from "../components/SessionCard";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import MarkdownView from "../components/MarkdownView";
 import { formatCost } from "../utils/format";
+
+const API_BASE =
+  typeof window !== "undefined"
+    ? `http://${window.location.hostname}:3456`
+    : "http://localhost:3456";
+
+const INITIALS_COLORS = [
+  "from-amber-600 to-orange-700",
+  "from-blue-600 to-indigo-700",
+  "from-emerald-600 to-teal-700",
+  "from-purple-600 to-violet-700",
+  "from-rose-600 to-pink-700",
+  "from-cyan-600 to-sky-700",
+  "from-lime-600 to-green-700",
+  "from-fuchsia-600 to-purple-700",
+];
+
+function getInitials(name: string): string {
+  const parts = name.replace(/[-_]/g, " ").split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function getColorIndex(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % INITIALS_COLORS.length;
+}
 
 interface CostWithSavings {
   inputCost: number;
@@ -24,6 +53,7 @@ interface ProjectAnalytics {
     id: number;
     path: string;
     display_name: string;
+    logo_path?: string | null;
   };
   costs: CostWithSavings;
   sessionCount: number;
@@ -90,6 +120,7 @@ export default function ProjectDetail() {
     [id]
   );
   const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
+  const [logoImgFailed, setLogoImgFailed] = useState(false);
 
   if (loading) {
     return (
@@ -114,34 +145,66 @@ export default function ProjectDetail() {
   // Build a lookup for enriched sessions by id
   const sessionById = new Map(enrichedSessions.map((s) => [s.id, s]));
 
+  const logoEl = (() => {
+    if (project.logo_path && !logoImgFailed) {
+      return (
+        <img
+          src={`${API_BASE}/api/projects/logo/${project.id}`}
+          alt=""
+          className="w-11 h-11 rounded-lg object-contain bg-surface-lighter flex-shrink-0"
+          onError={() => setLogoImgFailed(true)}
+        />
+      );
+    }
+    const initials = getInitials(project.display_name);
+    const color = INITIALS_COLORS[getColorIndex(project.display_name)];
+    return (
+      <div className={`w-11 h-11 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}>
+        <span className="text-sm font-bold text-white/90">{initials}</span>
+      </div>
+    );
+  })();
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-surface-light rounded-xl p-5 border border-border">
-        <Link to="/" className="text-xs text-gray-500 hover:text-gray-400">
-          &larr; Back to projects
-        </Link>
-        <h2 className="text-lg font-semibold mt-1">{project.display_name}</h2>
-        <div className="text-xs text-gray-500 mt-1">{project.path}</div>
-      </div>
+      {/* Header + Stats (compact) */}
+      <div className="bg-surface-light rounded-xl p-4 border border-border">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Logo + project info */}
+          <div className="flex items-center gap-3 min-w-0">
+            {logoEl}
+            <div className="min-w-0">
+              <Link to="/" className="text-[10px] text-gray-500 hover:text-gray-400">
+                &larr; Projects
+              </Link>
+              <h2 className="text-base font-semibold leading-tight truncate">{project.display_name}</h2>
+              <div className="text-[10px] text-gray-500 truncate">{project.path}</div>
+            </div>
+          </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatsCard
-          label="Total Cost"
-          value={formatCost(costs.totalCost)}
-        />
-        <StatsCard label="Sessions" value={sessionCount} />
-        <StatsCard
-          label="Messages"
-          value={messageCount.toLocaleString()}
-        />
-        <StatsCard
-          label="Cache Savings"
-          value={formatCost(costs.cacheSavings)}
-          sub={`${savingsPct}% saved`}
-          accent="#10b981"
-        />
+          {/* Stats inline */}
+          <div className="flex items-center gap-4 ml-auto flex-shrink-0">
+            <div className="text-center px-3">
+              <div className="text-lg font-bold text-gray-100">{formatCost(costs.totalCost)}</div>
+              <div className="text-[10px] text-gray-500">Cost</div>
+            </div>
+            <div className="w-px h-8 bg-border" />
+            <div className="text-center px-3">
+              <div className="text-lg font-bold text-gray-100">{sessionCount}</div>
+              <div className="text-[10px] text-gray-500">Sessions</div>
+            </div>
+            <div className="w-px h-8 bg-border" />
+            <div className="text-center px-3">
+              <div className="text-lg font-bold text-gray-100">{messageCount.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-500">Messages</div>
+            </div>
+            <div className="w-px h-8 bg-border" />
+            <div className="text-center px-3">
+              <div className="text-lg font-bold text-emerald-400">{formatCost(costs.cacheSavings)}</div>
+              <div className="text-[10px] text-gray-500">{savingsPct}% saved</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Sessions as cards */}
