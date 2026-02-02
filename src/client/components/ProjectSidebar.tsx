@@ -12,9 +12,7 @@ export default function ProjectSidebar() {
         to="/"
         className="flex items-center justify-center w-12 h-12 mt-3 mb-1 rounded-2xl bg-surface-light hover:bg-primary/20 transition-colors group"
       >
-        <span className="text-primary font-bold text-lg group-hover:text-primary-light transition-colors">
-          c
-        </span>
+        <img src="/logo.png" alt="Cloviz" className="w-8 h-8" />
       </Link>
 
       {/* Divider */}

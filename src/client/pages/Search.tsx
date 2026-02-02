@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../hooks/useApi";
 
 interface SearchResult {
@@ -33,6 +33,8 @@ interface SearchResponse {
 }
 
 export default function Search() {
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get("project_id") || "";
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,15 +45,15 @@ export default function Search() {
     setLoading(true);
     setSearched(true);
     try {
-      const data = await apiFetch<SearchResponse>(
-        `/api/search?q=${encodeURIComponent(query)}`
-      );
+      let url = `/api/search?q=${encodeURIComponent(query)}`;
+      if (projectId) url += `&project_id=${projectId}`;
+      const data = await apiFetch<SearchResponse>(url);
       setResults(data.results);
     } catch {
       setResults([]);
     }
     setLoading(false);
-  }, [query]);
+  }, [query, projectId]);
 
   // Group results by type
   const messages = results.filter((r) => r.resultType === "message");

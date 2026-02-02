@@ -5,13 +5,17 @@ const API_BASE =
     ? `http://${window.location.hostname}:3456`
     : "http://localhost:3456";
 
-export function useApi<T>(path: string, deps: unknown[] = []) {
+export function useApi<T>(path: string | null, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(path !== null);
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(() => {
-    setLoading(true);
+    if (path === null) return;
+    setData((prev) => {
+      if (prev === null) setLoading(true);
+      return prev;
+    });
     setError(null);
     fetch(`${API_BASE}${path}`)
       .then((res) => {

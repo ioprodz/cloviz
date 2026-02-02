@@ -1,8 +1,41 @@
-# Cloviz
+<p align="center">
+  <img src="cloviz-logo.png" alt="Cloviz" width="120">
+</p>
 
-A local dashboard that indexes your Claude Code sessions, tracks costs, visualizes activity patterns, and helps you understand how you work with AI.
+<h1 align="center">Cloviz</h1>
+
+<p align="center">A local dashboard that indexes your Claude Code sessions, tracks costs, visualizes activity patterns, and helps you understand how you work with AI.</p>
 
 All data stays on your machine. No external services, no telemetry.
+
+## Screenshots
+
+### Projects Overview
+![Projects Overview](docs/screenshots/projects-overview.png)
+
+### Kanban Board
+Sessions organized by phase with linked commits and cost breakdowns.
+![Kanban Board](docs/screenshots/kanban-board.png)
+
+### Gantt Timeline
+Visualize session durations with 1-day, 1-week, 1-month, and all-time presets.
+![Gantt Chart](docs/screenshots/gantt-chart.png)
+
+### Session Replay
+Full conversation replay with file tree, diffs, tool usage, and a session activity chart.
+![Session Replay](docs/screenshots/session-replay.png)
+
+### Analytics - Costs
+Track total spend, cache savings, daily cost trends, and per-model breakdowns.
+![Analytics Costs](docs/screenshots/analytics-costs.png)
+
+### Analytics - Tools
+See which tools Claude uses most across your sessions.
+![Analytics Tools](docs/screenshots/analytics-tools.png)
+
+### Analytics - Patterns
+Hour-by-day heatmap showing when you code with Claude.
+![Analytics Patterns](docs/screenshots/analytics-patterns.png)
 
 ## Features
 
@@ -20,7 +53,7 @@ All data stays on your machine. No external services, no telemetry.
 **Prerequisites:** [Bun](https://bun.sh) runtime installed.
 
 ```sh
-git clone https://github.com/nicobailon/cloviz.git
+git clone https://github.com/ioprodz/cloviz.git
 cd cloviz
 bun install
 bun run dev
