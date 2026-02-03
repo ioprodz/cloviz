@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useApi } from "../hooks/useApi";
 import { useWebSocket } from "../hooks/useWebSocket";
 import SessionCardGrid, {
@@ -9,6 +9,7 @@ import KanbanBoard, { type KanbanCommit } from "../components/KanbanBoard";
 import GanttChart from "../components/GanttChart";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import ProjectLogo from "../components/ProjectLogo";
+import ActivityArea from "../components/ActivityArea";
 import { formatCost } from "../utils/format";
 import { type CostWithSavings } from "../utils/project";
 
@@ -19,6 +20,15 @@ const SESSION_VIEWS = [
 ] as const;
 type SessionView = (typeof SESSION_VIEWS)[number]["key"];
 
+interface DailyCost {
+  date: string;
+  totalCost: number;
+  inputCost: number;
+  outputCost: number;
+  cacheWriteCost: number;
+  cacheReadCost: number;
+}
+
 interface ProjectAnalytics {
   project: {
     id: number;
@@ -28,6 +38,7 @@ interface ProjectAnalytics {
     remote_url?: string | null;
   };
   costs: CostWithSavings;
+  dailyCosts: DailyCost[];
   sessionCount: number;
   messageCount: number;
 }
@@ -64,6 +75,31 @@ export default function ProjectDetail() {
   useWebSocket("session:updated", () => { refetch(); refetchSessions(); refetchCommits(); });
   const [sessionView, setSessionView] = useState<SessionView>("board");
 
+  // Prepare activity data for the header chart (last 30 days, fill missing)
+  // Must be before early returns to follow React hooks rules
+  const activityData = useMemo(() => {
+    const dailyCosts = data?.dailyCosts;
+    if (!dailyCosts || dailyCosts.length === 0) return [];
+
+    const today = new Date();
+    const days: string[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const costMap = new Map(dailyCosts.map((d) => [d.date, d]));
+    return days.map((day) => {
+      const dc = costMap.get(day);
+      return {
+        input: dc?.inputCost ?? 0,
+        output: dc?.outputCost ?? 0,
+        cache: (dc?.cacheWriteCost ?? 0) + (dc?.cacheReadCost ?? 0),
+      };
+    });
+  }, [data?.dailyCosts]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -85,8 +121,13 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-6">
       {/* Header + Stats (compact) */}
-      <div className="bg-surface-light rounded-xl p-4 border border-border">
-        <div className="flex items-center gap-4 flex-wrap">
+      <div className="bg-surface-light rounded-xl p-4 border border-border relative overflow-hidden">
+        {activityData.length > 0 && activityData.some((d) => d.input + d.output + d.cache > 0) && (
+          <div className="absolute bottom-0 left-0 right-0 pointer-events-none opacity-60">
+            <ActivityArea data={activityData} width={800} height={100} />
+          </div>
+        )}
+        <div className="flex items-center gap-4 flex-wrap relative z-10">
           {/* Logo + project info */}
           <div className="flex items-center gap-3 min-w-0">
             <ProjectLogo project={project} size="w-11 h-11" textSize="text-sm" />

@@ -6,12 +6,14 @@ import type { Project, CostWithSavings, ProjectsResponse } from "../utils/projec
 interface ProjectsContextValue {
   projects: Project[];
   costs: Record<number, CostWithSavings>;
+  activity: Record<number, number[]>;
   loading: boolean;
 }
 
 const ProjectsContext = createContext<ProjectsContextValue>({
   projects: [],
   costs: {},
+  activity: {},
   loading: true,
 });
 
@@ -20,15 +22,20 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   const { data: costData, refetch: refetchCosts } = useApi<Record<number, CostWithSavings>>(
     "/api/projects/costs"
   );
+  const { data: activityData, refetch: refetchActivity } = useApi<Record<number, number[]>>(
+    "/api/projects/activity"
+  );
 
   useWebSocket("session:updated", () => {
     refetch();
     refetchCosts();
+    refetchActivity();
   });
 
   const value: ProjectsContextValue = {
     projects: data?.projects ?? [],
     costs: costData ?? {},
+    activity: activityData ?? {},
     loading,
   };
 

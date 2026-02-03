@@ -61,6 +61,71 @@ app.get("/logo/:id", async (c) => {
   });
 });
 
+// Bulk per-project activity sparkline data — must be before /:id
+app.get("/activity", (c) => {
+  const db = getDb();
+
+  // Get daily costs for all projects (last 30 days)
+  const rows = db
+    .prepare(
+      `SELECT p.id as project_id, DATE(m.timestamp) as date, m.model,
+              SUM(m.input_tokens) as input_tokens,
+              SUM(m.output_tokens) as output_tokens,
+              SUM(m.cache_creation_tokens) as cache_creation_tokens,
+              SUM(m.cache_read_tokens) as cache_read_tokens
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       JOIN projects p ON s.project_id = p.id
+       WHERE m.model IS NOT NULL AND m.model != '' AND m.timestamp IS NOT NULL
+         AND DATE(m.timestamp) >= DATE('now', '-30 days')
+       GROUP BY p.id, date, m.model
+       ORDER BY date`
+    )
+    .all() as {
+    project_id: number;
+    date: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_tokens: number;
+    cache_read_tokens: number;
+  }[];
+
+  // Aggregate by project and date
+  const projectDailyMap: Record<number, Map<string, number>> = {};
+
+  for (const row of rows) {
+    if (!projectDailyMap[row.project_id]) {
+      projectDailyMap[row.project_id] = new Map();
+    }
+    const cost = calculateCost(
+      row.model,
+      row.input_tokens ?? 0,
+      row.output_tokens ?? 0,
+      row.cache_creation_tokens ?? 0,
+      row.cache_read_tokens ?? 0
+    );
+    const existing = projectDailyMap[row.project_id].get(row.date) ?? 0;
+    projectDailyMap[row.project_id].set(row.date, existing + cost.totalCost);
+  }
+
+  // Convert to sparkline-friendly arrays (fill missing days with 0)
+  const result: Record<number, number[]> = {};
+  const today = new Date();
+  const days: string[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+
+  for (const [pid, dailyMap] of Object.entries(projectDailyMap)) {
+    result[Number(pid)] = days.map((day) => dailyMap.get(day) ?? 0);
+  }
+
+  return c.json(result);
+});
+
 // Bulk per-project cost summary — must be before /:id
 app.get("/costs", (c) => {
   const db = getDb();

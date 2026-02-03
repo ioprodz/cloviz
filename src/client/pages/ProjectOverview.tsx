@@ -2,12 +2,13 @@ import { Link } from "react-router-dom";
 import { useProjects } from "../hooks/useProjects";
 import ProjectLogo from "../components/ProjectLogo";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import Sparkline from "../components/Sparkline";
 import { formatCost } from "../utils/format";
 import { extractRepoName } from "../utils/project";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ProjectOverview() {
-  const { projects, costs, loading } = useProjects();
+  const { projects, costs, activity, loading } = useProjects();
 
   if (loading) {
     return (
@@ -31,12 +32,25 @@ export default function ProjectOverview() {
             ? p.branches.split(",").filter(Boolean)
             : [];
           const projectCost = costs[p.id];
+          const activityData = activity[p.id];
           return (
             <Link
               key={p.id}
               to={`/projects/${p.id}`}
-              className="rounded-xl p-5 border border-border hover:border-primary/50 transition-colors"
+              className="rounded-xl p-5 border border-border hover:border-primary/50 transition-colors relative overflow-hidden"
             >
+              {activityData && activityData.some((v) => v > 0) && (
+                <div className="absolute inset-0 opacity-40 pointer-events-none flex items-end overflow-hidden">
+                  <Sparkline
+                    data={activityData}
+                    width={400}
+                    height={80}
+                    color="#6366f1"
+                    fill
+                    smooth
+                  />
+                </div>
+              )}
               <div className="flex items-start gap-3">
                 <ProjectLogo project={p} size="w-14 h-14" textSize="text-base" />
                 <div className="flex-1 min-w-0">
