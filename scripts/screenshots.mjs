@@ -117,6 +117,7 @@ const TOTAL = 7;
     // 3. Gantt view
     console.log(`3/${TOTAL} Gantt Chart`);
     await tryClick(page, "button", /gantt/i);
+    await tryClick(page, "button", /^All$/i); // Select "All" time period
     await page.screenshot({ path: `${OUT}/gantt-chart.png` });
   } else {
     console.log(`2/${TOTAL} Skipped (no project found)`);
@@ -142,6 +143,7 @@ const TOTAL = 7;
   // 6. Analytics - Tools
   console.log(`6/${TOTAL} Analytics - Tools`);
   await tryClick(page, "button", /tools/i);
+  await tryClick(page, "button", /^Treemap$/i); // Select treemap view
   await page.screenshot({ path: `${OUT}/analytics-tools.png` });
 
   // 7. Analytics - Patterns
