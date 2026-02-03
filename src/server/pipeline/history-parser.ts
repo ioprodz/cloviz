@@ -1,7 +1,7 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync, statSync } from "fs";
 
-export function parseHistory(db: Database, filePath: string) {
+export function parseHistory(db: DatabaseLike, filePath: string) {
   let fileSize: number;
   try {
     fileSize = statSync(filePath).size;
@@ -19,7 +19,6 @@ export function parseHistory(db: Database, filePath: string) {
   if (indexedBytes >= fileSize) return; // Already up to date
 
   // Read only new bytes
-  const fd = Bun.file(filePath);
   const buffer = readFileSync(filePath);
   const newData = buffer.subarray(indexedBytes).toString("utf-8");
   const lines = newData.split("\n").filter((l) => l.trim());

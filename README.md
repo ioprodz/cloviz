@@ -8,7 +8,11 @@
 
 All data stays on your machine. No external services, no telemetry.
 
-## Screenshots
+### Easy Install
+
+```sh
+npx cloviz
+```
 
 ### Projects Overview
 ![Projects Overview](docs/screenshots/projects-overview.png)

@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join, basename } from "path";
 
-export function parsePlan(db: Database, filePath: string) {
+export function parsePlan(db: DatabaseLike, filePath: string) {
   let content: string;
   let mtime: number;
   try {
@@ -21,7 +21,7 @@ export function parsePlan(db: Database, filePath: string) {
   ).run(filename, content, Math.floor(mtime));
 }
 
-export function scanAllPlans(db: Database, claudeDir: string) {
+export function scanAllPlans(db: DatabaseLike, claudeDir: string) {
   const plansDir = join(claudeDir, "plans");
   let files: string[];
   try {

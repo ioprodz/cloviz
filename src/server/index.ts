@@ -1,12 +1,15 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { join } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
 import { getDb, closeDb } from "./db";
 import { runQuickIndex, runBackgroundIndex } from "./pipeline/index";
 import { startWatcher } from "./watcher";
 import { addClient, removeClient, broadcast } from "./ws";
+import { IS_BUN } from "./runtime/detect";
+import { fileResponse, fileExistsAsync } from "./runtime/file";
 import dashboardApi from "./api/dashboard";
 import sessionsApi from "./api/sessions";
 import projectsApi from "./api/projects";
@@ -20,6 +23,8 @@ import costsApi from "./api/costs";
 import commitsApi from "./api/commits";
 import { createWatcherApi } from "./api/watcher-api";
 import { createHooksApi } from "./api/hooks-api";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PORT = parseInt(process.env.PORT || "3456");
@@ -57,7 +62,7 @@ app.route("/api/hooks", createHooksApi(ctx));
 
 // Serve static files in production
 if (IS_PROD) {
-  const clientDir = join(import.meta.dir, "../../dist/client");
+  const clientDir = join(__dirname, "../../dist/client");
   if (existsSync(clientDir)) {
     app.get("/*", async (c, next) => {
       // Skip API and WS routes
@@ -66,55 +71,17 @@ if (IS_PROD) {
       }
       // Try to serve static file
       const filePath = join(clientDir, c.req.path === "/" ? "index.html" : c.req.path);
-      const file = Bun.file(filePath);
-      if (await file.exists()) {
-        return new Response(file);
+      if (existsSync(filePath)) {
+        return fileResponse(filePath);
       }
       // SPA fallback
-      return new Response(Bun.file(join(clientDir, "index.html")));
+      return fileResponse(join(clientDir, "index.html"));
     });
   }
 }
 
 // Start file watcher
 startWatcher(ctx);
-
-// Start server with WebSocket support
-const server = Bun.serve({
-  port: PORT,
-  fetch(req, server) {
-    const url = new URL(req.url);
-
-    // WebSocket upgrade
-    if (url.pathname === "/ws") {
-      const upgraded = server.upgrade(req);
-      if (upgraded) return undefined;
-      return new Response("WebSocket upgrade failed", { status: 400 });
-    }
-
-    return app.fetch(req, server);
-  },
-  websocket: {
-    open(ws) {
-      addClient(ws);
-      // Send initial sync
-      const dashboardData = getDashboardSummary();
-      ws.send(
-        JSON.stringify({
-          event: "initial:sync",
-          data: dashboardData,
-          timestamp: Date.now(),
-        })
-      );
-    },
-    close(ws) {
-      removeClient(ws);
-    },
-    message(ws, msg) {
-      // Handle client messages if needed
-    },
-  },
-});
 
 function getDashboardSummary() {
   try {
@@ -134,6 +101,82 @@ function getDashboardSummary() {
   } catch {
     return {};
   }
+}
+
+// Start server with WebSocket support
+if (IS_BUN) {
+  // Bun runtime: native Bun.serve with WebSocket
+  const server = Bun.serve({
+    port: PORT,
+    fetch(req: Request, server: any) {
+      const url = new URL(req.url);
+
+      // WebSocket upgrade
+      if (url.pathname === "/ws") {
+        const upgraded = server.upgrade(req);
+        if (upgraded) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      return app.fetch(req, server);
+    },
+    websocket: {
+      open(ws: any) {
+        addClient(ws);
+        const dashboardData = getDashboardSummary();
+        ws.send(
+          JSON.stringify({
+            event: "initial:sync",
+            data: dashboardData,
+            timestamp: Date.now(),
+          })
+        );
+      },
+      close(ws: any) {
+        removeClient(ws);
+      },
+      message(_ws: any, _msg: any) {
+        // Handle client messages if needed
+      },
+    },
+  });
+} else {
+  // Node.js runtime: @hono/node-server + @hono/node-ws
+  const { serve } = await import("@hono/node-server");
+  const { createNodeWebSocket } = await import("@hono/node-ws");
+
+  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+
+  const wsClientMap = new WeakMap<object, { send(data: string): void }>();
+
+  app.get("/ws", upgradeWebSocket(() => ({
+    onOpen(_event: any, ws: any) {
+      const client = { send: (data: string) => ws.send(data) };
+      wsClientMap.set(ws, client);
+      addClient(client);
+      const dashboardData = getDashboardSummary();
+      ws.send(
+        JSON.stringify({
+          event: "initial:sync",
+          data: dashboardData,
+          timestamp: Date.now(),
+        })
+      );
+    },
+    onClose(_event: any, ws: any) {
+      const client = wsClientMap.get(ws);
+      if (client) {
+        removeClient(client);
+        wsClientMap.delete(ws);
+      }
+    },
+    onMessage(_event: any, _ws: any) {
+      // Handle client messages if needed
+    },
+  })));
+
+  const server = serve({ fetch: app.fetch, port: PORT }, () => {});
+  injectWebSocket(server);
 }
 
 console.log(`

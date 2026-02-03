@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { join } from "path";
 import { readdirSync, existsSync, statSync } from "fs";
 import { parseStatsCache } from "./stats-parser";
@@ -17,7 +17,7 @@ import { scanAllProjectCommits, scanProjectCommits, getRemoteUrl, parseRemoteToW
 const STARTUP_MAX_JSONL_SIZE = 2 * 1024 * 1024;
 
 export interface PipelineContext {
-  db: Database;
+  db: DatabaseLike;
   claudeDir: string;
 }
 
@@ -203,7 +203,7 @@ const LOGO_CANDIDATES = [
   ".github/logo.svg", ".github/logo.png",
 ];
 
-function scanProjectLogos(db: Database) {
+function scanProjectLogos(db: DatabaseLike) {
   const projects = db
     .prepare("SELECT id, path FROM projects WHERE path IS NOT NULL AND path != ''")
     .all() as { id: number; path: string }[];
@@ -228,7 +228,7 @@ function scanProjectLogos(db: Database) {
   }
 }
 
-async function scanProjectRemotes(db: Database) {
+async function scanProjectRemotes(db: DatabaseLike) {
   const projects = db
     .prepare("SELECT id, path FROM projects WHERE path IS NOT NULL AND path != ''")
     .all() as { id: number; path: string }[];

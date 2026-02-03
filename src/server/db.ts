@@ -1,17 +1,17 @@
-import { Database } from "bun:sqlite";
+import { openDatabaseSync, type DatabaseLike } from "./runtime/database";
 import { mkdirSync } from "fs";
-import { dirname, join } from "path";
+import { join } from "path";
 import { homedir } from "os";
 
 const DB_DIR = join(homedir(), ".cache", "cloviz");
 const DB_PATH = join(DB_DIR, "cloviz.db");
 
-let db: Database;
+let db: DatabaseLike;
 
-export function getDb(): Database {
+export function getDb(): DatabaseLike {
   if (!db) {
     mkdirSync(DB_DIR, { recursive: true });
-    db = new Database(DB_PATH);
+    db = openDatabaseSync(DB_PATH);
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA synchronous = NORMAL");
     db.exec("PRAGMA cache_size = -64000"); // 64MB cache
@@ -21,7 +21,7 @@ export function getDb(): Database {
   return db;
 }
 
-function migrate(db: Database) {
+function migrate(db: DatabaseLike) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

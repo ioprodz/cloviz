@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { join } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
+import { fileStreamResponse } from "../runtime/file";
 
 const app = new Hono();
 
@@ -21,8 +22,8 @@ app.get("/:session", (c) => {
     return c.json({ error: "Debug log not found" }, 404);
   }
 
-  const file = Bun.file(filePath);
-  return new Response(file.stream(), {
+  const response = fileStreamResponse(filePath, "text/plain");
+  return new Response(response.body, {
     headers: {
       "Content-Type": "text/plain",
       "Cache-Control": "no-store",

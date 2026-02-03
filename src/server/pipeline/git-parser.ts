@@ -1,4 +1,5 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
+import { spawnCommand } from "../runtime/process";
 import { existsSync } from "fs";
 
 interface ParsedCommit {
@@ -38,15 +39,9 @@ async function gitExec(
   args: string[]
 ): Promise<string | null> {
   try {
-    const proc = Bun.spawn(["git", ...args], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const output = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) return null;
-    return output;
+    const result = await spawnCommand("git", args, { cwd });
+    if (result.exitCode !== 0) return null;
+    return result.stdout;
   } catch {
     return null;
   }
@@ -193,7 +188,7 @@ async function parseGitLog(
 /**
  * Load session time windows and whether they contain file writes.
  */
-function loadSessionWindows(db: Database, projectId: number): SessionWindow[] {
+function loadSessionWindows(db: DatabaseLike, projectId: number): SessionWindow[] {
   const sessions = db
     .prepare(
       `SELECT s.id, s.created_at, s.modified_at,
@@ -224,7 +219,7 @@ function loadSessionWindows(db: Database, projectId: number): SessionWindow[] {
  *   3. The session isn't already linked to a commit
  */
 function matchCommitsToSessions(
-  db: Database,
+  db: DatabaseLike,
   projectId: number,
   commits: ParsedCommit[]
 ) {
@@ -279,7 +274,7 @@ function matchCommitsToSessions(
  * Scan and index git commits for a single project.
  */
 export async function scanProjectCommits(
-  db: Database,
+  db: DatabaseLike,
   projectId: number,
   projectPath: string
 ) {
@@ -390,7 +385,7 @@ export function parseRemoteToWebUrl(remoteUrl: string): string | null {
 /**
  * Scan all projects for git commits.
  */
-export async function scanAllProjectCommits(db: Database) {
+export async function scanAllProjectCommits(db: DatabaseLike) {
   const projects = db
     .prepare("SELECT id, path FROM projects WHERE path IS NOT NULL AND path != ''")
     .all() as { id: number; path: string }[];

@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync, statSync } from "fs";
 
 interface ContentBlock {
@@ -38,7 +38,7 @@ interface SessionLine {
 }
 
 export function parseSessionJsonl(
-  db: Database,
+  db: DatabaseLike,
   sessionId: string,
   jsonlPath: string
 ) {

@@ -1,9 +1,9 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync, readdirSync } from "fs";
 import { join, basename } from "path";
 
 export function parseSessionIndex(
-  db: Database,
+  db: DatabaseLike,
   indexPath: string,
   claudeDir: string
 ) {
@@ -79,7 +79,7 @@ export function parseSessionIndex(
   tx();
 }
 
-export function scanAllSessionIndexes(db: Database, claudeDir: string) {
+export function scanAllSessionIndexes(db: DatabaseLike, claudeDir: string) {
   const projectsDir = join(claudeDir, "projects");
   let dirs: string[];
   try {

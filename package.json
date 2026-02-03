@@ -2,16 +2,31 @@
   "name": "cloviz",
   "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "cloviz": "dist/server/cli.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
     "dev:server": "bun --watch src/server/index.ts",
     "dev:client": "vite",
-    "build": "vite build",
+    "build": "bun run build:client && bun run build:server",
+    "build:client": "vite build",
+    "build:server": "tsup src/server/cli.ts --format esm --target node18 --outDir dist/server --clean --external bun:sqlite --external better-sqlite3 --external chokidar --external @hono/node-server --external @hono/node-ws --external hono --external ws",
     "start": "NODE_ENV=production bun src/server/index.ts",
-    "preview": "vite build && bun src/server/index.ts",
-    "screenshots": "node scripts/screenshots.mjs"
+    "preview": "bun run build && bun dist/server/cli.js",
+    "screenshots": "node scripts/screenshots.mjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@hono/node-ws": "^1.1.0",
+    "better-sqlite3": "^11.0.0",
     "hono": "^4.7.0",
     "chokidar": "^4.0.0",
     "react": "^19.0.0",
@@ -26,6 +41,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/bun": "^1.2.0",
     "@types/diff": "^7.0.0",
     "@types/react": "^19.0.0",
@@ -34,6 +50,7 @@
     "concurrently": "^9.1.0",
     "playwright": "^1.58.1",
     "tailwindcss": "^4.0.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0"
   }

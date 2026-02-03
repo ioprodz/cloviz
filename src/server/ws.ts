@@ -1,12 +1,14 @@
-import type { ServerWebSocket } from "bun";
+export interface WebSocketClient {
+  send(data: string): void;
+}
 
-const clients = new Set<ServerWebSocket<unknown>>();
+const clients = new Set<WebSocketClient>();
 
-export function addClient(ws: ServerWebSocket<unknown>) {
+export function addClient(ws: WebSocketClient) {
   clients.add(ws);
 }
 
-export function removeClient(ws: ServerWebSocket<unknown>) {
+export function removeClient(ws: WebSocketClient) {
   clients.delete(ws);
 }
 

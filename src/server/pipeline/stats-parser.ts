@@ -1,7 +1,7 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync } from "fs";
 
-export function parseStatsCache(db: Database, filePath: string) {
+export function parseStatsCache(db: DatabaseLike, filePath: string) {
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8");

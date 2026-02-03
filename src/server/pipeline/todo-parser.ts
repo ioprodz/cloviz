@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readFileSync, readdirSync } from "fs";
 import { join, basename } from "path";
 
-export function parseTodo(db: Database, filePath: string) {
+export function parseTodo(db: DatabaseLike, filePath: string) {
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8");
@@ -46,7 +46,7 @@ export function parseTodo(db: Database, filePath: string) {
   tx();
 }
 
-export function scanAllTodos(db: Database, claudeDir: string) {
+export function scanAllTodos(db: DatabaseLike, claudeDir: string) {
   const todosDir = join(claudeDir, "todos");
   let files: string[];
   try {

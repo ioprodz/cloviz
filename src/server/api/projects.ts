@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { join, extname } from "path";
 import { getDb } from "../db";
 import { calculateCost, aggregateCosts, type CostWithSavings } from "../pricing";
+import { fileResponse } from "../runtime/file";
 
 const MIME_TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
@@ -50,9 +51,9 @@ app.get("/logo/:id", async (c) => {
 
   const ext = extname(project.logo_path).toLowerCase();
   const mime = MIME_TYPES[ext] || "application/octet-stream";
-  const file = Bun.file(project.logo_path);
+  const response = fileResponse(project.logo_path, mime);
 
-  return new Response(file, {
+  return new Response(response.body, {
     headers: {
       "Content-Type": mime,
       "Cache-Control": "public, max-age=86400",

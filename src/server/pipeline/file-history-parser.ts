@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
+import type { DatabaseLike } from "../runtime/database";
 import { readdirSync } from "fs";
 import { join } from "path";
 
-export function scanFileHistory(db: Database, claudeDir: string) {
+export function scanFileHistory(db: DatabaseLike, claudeDir: string) {
   const histDir = join(claudeDir, "file-history");
   let sessionDirs: string[];
   try {
