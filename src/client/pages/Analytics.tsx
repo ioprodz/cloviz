@@ -19,6 +19,7 @@ import {
   Area,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -799,7 +800,11 @@ function ToolsTab({ projectId }: { projectId: string }) {
                     "calls",
                   ]}
                 />
-                <Bar dataKey="count" fill="#d97706" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  {topTools.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={TOOL_COLORS[index % TOOL_COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -891,16 +896,21 @@ interface HourlyData {
   hourCounts: Record<string, number>;
   dayOfWeek: { dow: number; count: number }[];
   heatmap: { dow: number; hour: number; count: number }[];
+  calendarHeatmap: { date: string; count: number }[];
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+type HeatmapView = "hourly" | "weekly";
 
 function PatternsTab({ projectId }: { projectId: string }) {
   const url = projectId
     ? `/api/analytics/hourly?project_id=${projectId}`
     : "/api/analytics/hourly";
   const { data, loading } = useApi<HourlyData>(url, [projectId]);
+  const [heatmapView, setHeatmapView] = useState<HeatmapView>("weekly");
 
   if (loading)
     return (
@@ -916,8 +926,9 @@ function PatternsTab({ projectId }: { projectId: string }) {
     );
   if (!data) return null;
 
-  const { hourCounts, heatmap } = data;
+  const { hourCounts, heatmap, calendarHeatmap = [] } = data;
 
+  // Hour x Day heatmap grid
   const heatmapGrid: number[][] = Array.from({ length: 7 }, () =>
     Array(24).fill(0)
   );
@@ -927,15 +938,77 @@ function PatternsTab({ projectId }: { projectId: string }) {
     if (entry.count > maxHeat) maxHeat = entry.count;
   }
 
-  function getHeatColor(count: number): string {
+  // Calendar heatmap (GitHub-style)
+  const calendarMap = new Map<string, number>();
+  let maxCalendarHeat = 1;
+  for (const entry of calendarHeatmap) {
+    calendarMap.set(entry.date, entry.count);
+    if (entry.count > maxCalendarHeat) maxCalendarHeat = entry.count;
+  }
+
+  // Build weeks for calendar view (last 52 weeks)
+  const today = new Date();
+  const weeks: { date: Date; dateStr: string; count: number }[][] = [];
+
+  // Helper to format date as YYYY-MM-DD in local timezone
+  const formatDateLocal = (d: Date): string => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Start from 52 weeks ago, aligned to Sunday
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 52 * 7 - startDate.getDay());
+
+  let currentWeek: { date: Date; dateStr: string; count: number }[] = [];
+  const cursor = new Date(startDate);
+
+  while (cursor <= today) {
+    const dateStr = formatDateLocal(cursor);
+    currentWeek.push({
+      date: new Date(cursor),
+      dateStr,
+      count: calendarMap.get(dateStr) ?? 0,
+    });
+
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  if (currentWeek.length > 0) {
+    weeks.push(currentWeek);
+  }
+
+  function getHeatColor(count: number, max: number): string {
     if (count === 0) return "rgb(17 24 39)";
-    const intensity = count / maxHeat;
+    const intensity = count / max;
     if (intensity < 0.2) return "rgb(120 53 15 / 0.4)";
     if (intensity < 0.4) return "rgb(120 53 15)";
     if (intensity < 0.6) return "rgb(146 64 14)";
     if (intensity < 0.8) return "rgb(217 119 6)";
     return "rgb(245 158 11)";
   }
+
+  // Get month labels for calendar
+  const monthLabels: { label: string; col: number }[] = [];
+  let lastMonth = -1;
+  weeks.forEach((week, i) => {
+    const firstDay = week[0];
+    if (firstDay) {
+      const month = firstDay.date.getMonth();
+      if (month !== lastMonth) {
+        monthLabels.push({
+          label: firstDay.date.toLocaleString("default", { month: "short" }),
+          col: i,
+        });
+        lastMonth = month;
+      }
+    }
+  });
 
   const hourValues = HOURS.map((h) => ({
     hour: h,
@@ -957,65 +1030,172 @@ function PatternsTab({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-6">
       <div className="bg-surface-light rounded-xl p-5 border border-border">
-        <h3 className="text-sm font-medium text-gray-400 mb-4">
-          Hour x Day Heatmap
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="border-collapse">
-            <thead>
-              <tr>
-                <th className="w-10"></th>
-                {HOURS.map((h) => (
-                  <th
-                    key={h}
-                    className="text-[10px] text-gray-600 font-normal px-0.5 w-6 text-center"
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-gray-400">
+            Activity Heatmap
+          </h3>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setHeatmapView("weekly")}
+              className={`px-2 py-1 text-xs rounded ${
+                heatmapView === "weekly"
+                  ? "bg-primary/20 text-primary"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              Weekly
+            </button>
+            <button
+              onClick={() => setHeatmapView("hourly")}
+              className={`px-2 py-1 text-xs rounded ${
+                heatmapView === "hourly"
+                  ? "bg-primary/20 text-primary"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              Hour × Day
+            </button>
+          </div>
+        </div>
+
+        {heatmapView === "weekly" ? (
+          <div className="overflow-x-auto">
+            <div
+              className="inline-grid gap-[3px]"
+              style={{
+                gridTemplateColumns: `20px repeat(${weeks.length}, 12px)`,
+                gridTemplateRows: "16px repeat(7, 12px)",
+              }}
+            >
+              {/* Empty top-left cell */}
+              <div />
+              {/* Month labels row */}
+              {weeks.map((week, wi) => {
+                const firstDay = week[0];
+                const showMonth =
+                  firstDay &&
+                  (wi === 0 || firstDay.date.getDate() <= 7);
+                return (
+                  <div
+                    key={`month-${wi}`}
+                    className="text-[10px] text-gray-500 leading-none"
                   >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DAYS.map((day, dow) => (
-                <tr key={dow}>
-                  <td className="text-[10px] text-gray-500 pr-2 text-right">
-                    {day}
-                  </td>
+                    {showMonth
+                      ? firstDay.date.toLocaleString("default", { month: "short" })
+                      : ""}
+                  </div>
+                );
+              })}
+              {/* Day labels + grid cells */}
+              {DAYS_SHORT.map((dayLabel, dow) => [
+                /* Day label */
+                <div
+                  key={`day-${dow}`}
+                  className="text-[9px] text-gray-600 flex items-center justify-end pr-1"
+                >
+                  {dow % 2 === 1 ? dayLabel : ""}
+                </div>,
+                /* Week cells for this day */
+                ...weeks.map((week, wi) => {
+                  const day = week[dow];
+                  if (!day) {
+                    return <div key={`cell-${wi}-${dow}`} />;
+                  }
+                  return (
+                    <div
+                      key={`cell-${wi}-${dow}`}
+                      className="w-[10px] h-[10px] rounded-sm cursor-pointer hover:ring-1 hover:ring-gray-500"
+                      style={{
+                        backgroundColor: getHeatColor(day.count, maxCalendarHeat),
+                      }}
+                      title={`${day.dateStr}: ${day.count} activities`}
+                    />
+                  );
+                }),
+              ])}
+            </div>
+            {/* Legend */}
+            <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-500">
+              <span>Less</span>
+              {[0, 0.2, 0.4, 0.6, 0.8, 1].map((intensity) => (
+                <div
+                  key={intensity}
+                  className="w-[10px] h-[10px] rounded-sm"
+                  style={{
+                    backgroundColor: getHeatColor(intensity * maxCalendarHeat, maxCalendarHeat),
+                  }}
+                />
+              ))}
+              <span>More</span>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="border-collapse">
+              <thead>
+                <tr>
+                  <th className="w-10"></th>
                   {HOURS.map((h) => (
-                    <td key={h} className="p-0.5">
-                      <div
-                        className="w-5 h-5 rounded-sm"
-                        style={{
-                          backgroundColor: getHeatColor(heatmapGrid[dow][h]),
-                        }}
-                        title={`${day} ${h}:00 — ${heatmapGrid[dow][h]} activities`}
-                      />
-                    </td>
+                    <th
+                      key={h}
+                      className="text-[10px] text-gray-600 font-normal px-0.5 w-6 text-center"
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {DAYS.map((day, dow) => (
+                  <tr key={dow}>
+                    <td className="text-[10px] text-gray-500 pr-2 text-right">
+                      {day}
+                    </td>
+                    {HOURS.map((h) => (
+                      <td key={h} className="p-0.5">
+                        <div
+                          className="w-5 h-5 rounded-sm"
+                          style={{
+                            backgroundColor: getHeatColor(heatmapGrid[dow][h], maxHeat),
+                          }}
+                          title={`${day} ${h}:00 — ${heatmapGrid[dow][h]} activities`}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="bg-surface-light rounded-xl p-5 border border-border">
         <h3 className="text-sm font-medium text-gray-400 mb-4">
-          Hourly Distribution (Sessions Started)
+          Hourly Distribution
         </h3>
-        <div className="flex items-end gap-1 h-32">
-          {hourValues.map((h) => (
-            <div
-              key={h.hour}
-              className="flex-1 flex flex-col items-center gap-1"
-            >
+        <div className="h-32 flex items-end gap-1">
+          {hourValues.map((h) => {
+            const heightPx = maxHourCount > 0
+              ? Math.max((h.count / maxHourCount) * 120, h.count > 0 ? 4 : 0)
+              : 0;
+            return (
               <div
-                className="w-full bg-primary/70 rounded-t transition-all"
-                style={{
-                  height: `${(h.count / maxHourCount) * 100}%`,
-                  minHeight: h.count > 0 ? "2px" : "0",
-                }}
-              />
+                key={h.hour}
+                className="flex-1 flex flex-col items-center justify-end"
+              >
+                <div
+                  className="w-full bg-primary/70 rounded-t transition-all hover:bg-primary"
+                  style={{ height: `${heightPx}px` }}
+                  title={`${h.hour}:00 — ${h.count} activities`}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-1 mt-1">
+          {hourValues.map((h) => (
+            <div key={h.hour} className="flex-1 text-center">
               <span className="text-[9px] text-gray-600">{h.hour}</span>
             </div>
           ))}
@@ -1027,20 +1207,20 @@ function PatternsTab({ projectId }: { projectId: string }) {
           <div className="text-xs text-gray-500">Peak Hour</div>
           <div className="text-xl font-bold">{peakHour.hour}:00</div>
           <div className="text-xs text-gray-600">
-            {peakHour.count} sessions
+            {peakHour.count} activities
           </div>
         </div>
         <div className="bg-surface-light rounded-xl p-4 border border-border">
           <div className="text-xs text-gray-500">Total Tracked</div>
-          <div className="text-xl font-bold">{totalFromHours}</div>
+          <div className="text-xl font-bold">{totalFromHours.toLocaleString()}</div>
         </div>
         <div className="bg-surface-light rounded-xl p-4 border border-border">
           <div className="text-xs text-gray-500">Morning (6-12)</div>
-          <div className="text-xl font-bold">{morningCount}</div>
+          <div className="text-xl font-bold">{morningCount.toLocaleString()}</div>
         </div>
         <div className="bg-surface-light rounded-xl p-4 border border-border">
           <div className="text-xs text-gray-500">Evening (18-24)</div>
-          <div className="text-xl font-bold">{eveningCount}</div>
+          <div className="text-xl font-bold">{eveningCount.toLocaleString()}</div>
         </div>
       </div>
     </div>

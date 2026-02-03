@@ -190,13 +190,14 @@ app.get("/hourly", (c) => {
   let hourCounts: Record<string, number>;
   let dayOfWeek: any[];
   let heatmap: any[];
+  let calendarHeatmap: { date: string; count: number }[];
 
   if (projectId) {
     // Compute hourCounts from history_entries joined with sessions
     const hourRows = db
       .prepare(
         `SELECT
-          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as hour,
           COUNT(*) as count
          FROM history_entries h
          JOIN sessions s ON h.session_id = s.id
@@ -214,7 +215,7 @@ app.get("/hourly", (c) => {
     dayOfWeek = db
       .prepare(
         `SELECT
-          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
           COUNT(*) as count
          FROM history_entries h
          JOIN sessions s ON h.session_id = s.id
@@ -228,8 +229,8 @@ app.get("/hourly", (c) => {
     heatmap = db
       .prepare(
         `SELECT
-          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
-          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          CAST(strftime('%w', datetime(h.timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
+          CAST(strftime('%H', datetime(h.timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as hour,
           COUNT(*) as count
          FROM history_entries h
          JOIN sessions s ON h.session_id = s.id
@@ -237,6 +238,21 @@ app.get("/hourly", (c) => {
          GROUP BY dow, hour`
       )
       .all(projectId);
+
+    // Calendar heatmap (daily activity for last 52 weeks / 364 days)
+    calendarHeatmap = db
+      .prepare(
+        `SELECT
+          DATE(datetime(h.timestamp/1000, 'unixepoch', 'localtime')) as date,
+          COUNT(*) as count
+         FROM history_entries h
+         JOIN sessions s ON h.session_id = s.id
+         WHERE h.timestamp > 0 AND s.project_id = ?
+           AND DATE(datetime(h.timestamp/1000, 'unixepoch', 'localtime')) >= DATE('now', '-364 days')
+         GROUP BY date
+         ORDER BY date`
+      )
+      .all(projectId) as { date: string; count: number }[];
   } else {
     // Fast path: use stats_cache for hourCounts
     const hourCountsRaw = db
@@ -249,7 +265,7 @@ app.get("/hourly", (c) => {
     dayOfWeek = db
       .prepare(
         `SELECT
-          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
           COUNT(*) as count
          FROM history_entries
          WHERE timestamp > 0
@@ -262,17 +278,31 @@ app.get("/hourly", (c) => {
     heatmap = db
       .prepare(
         `SELECT
-          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
-          CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+          CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
+          CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as hour,
           COUNT(*) as count
          FROM history_entries
          WHERE timestamp > 0
          GROUP BY dow, hour`
       )
       .all();
+
+    // Calendar heatmap (daily activity for last 52 weeks / 364 days)
+    calendarHeatmap = db
+      .prepare(
+        `SELECT
+          DATE(datetime(timestamp/1000, 'unixepoch', 'localtime')) as date,
+          COUNT(*) as count
+         FROM history_entries
+         WHERE timestamp > 0
+           AND DATE(datetime(timestamp/1000, 'unixepoch', 'localtime')) >= DATE('now', '-364 days')
+         GROUP BY date
+         ORDER BY date`
+      )
+      .all() as { date: string; count: number }[];
   }
 
-  return c.json({ hourCounts, dayOfWeek, heatmap });
+  return c.json({ hourCounts, dayOfWeek, heatmap, calendarHeatmap });
 });
 
 export default app;
